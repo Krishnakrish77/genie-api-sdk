@@ -76,8 +76,14 @@ jobs:
         with: { node-version: 26, registry-url: "https://registry.npmjs.org" }
       - uses: actions/download-artifact@v4
         with: { name: npm-dist, path: dist }
-      - name: Publish npm beta
-        run: npm publish dist/*.tgz --tag beta
+      - name: Publish npm package
+        run: |
+          version=$(node -p 'require("./typescript/package.json").version')
+          case "$version" in
+            *-*) dist_tag=beta ;;
+            *) dist_tag=latest ;;
+          esac
+          npm publish dist/*.tgz --tag "$dist_tag"
 
   tag-release:
     needs: [publish-python, publish-npm]
@@ -87,7 +93,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Create immutable release tag
+      - name: Create release tag
         run: |
           version=$(node -p 'require("./typescript/package.json").version')
           tag="v$version"

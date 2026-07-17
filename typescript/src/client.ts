@@ -76,6 +76,7 @@ export class GenieClient {
           if (event.type === "system.stream_interrupted") { retryAfterMs = Math.max(0, Number(event.data.retry_after_ms) || 0); interrupted = true; break; }
         }
       } catch (error) {
+        if (signal?.aborted) throw signal.reason ?? error;
         if (!runId) throw error;
         interrupted = true;
       }
@@ -86,7 +87,7 @@ export class GenieClient {
         stream = this.reconnect(genieHandle, conversationId, runId, lastEventId, signal);
         continue;
       }
-      for await (const event of this.replayEvents(genieHandle, conversationId, lastCreatedAt, seenEventIds)) yield event;
+      for await (const event of this.replayEvents(genieHandle, conversationId, lastCreatedAt, seenEventIds, signal)) yield event;
       return;
     }
   }
@@ -122,8 +123,8 @@ export class GenieClient {
   private id(value: string): string { return encodeURIComponent(value); }
   private path(genieHandle: string, suffix: string): string { return `/api/v1/genies/${this.id(genieHandle)}/chat${suffix}`; }
 
-  private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown): Promise<T> {
-    const response = await this.request(method, path, params, body);
+  private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown, signal?: AbortSignal): Promise<T> {
+    const response = await this.request(method, path, params, body, undefined, signal);
     return response.json() as Promise<T>;
   }
 
@@ -173,17 +174,19 @@ export class GenieClient {
     if (buffer) { const event = parseSseFrame(buffer); if (event) yield event; }
   }
 
-  private async *replayEvents(genieHandle: string, conversationId: string, sinceCreatedAt: string | undefined, seenEventIds: Set<string>): AsyncGenerator<Event> {
+  private async *replayEvents(genieHandle: string, conversationId: string, sinceCreatedAt: string | undefined, seenEventIds: Set<string>, signal?: AbortSignal): AsyncGenerator<Event> {
     for (;;) {
-      const page = await this.listEvents(genieHandle, { conversationId, sinceCreatedAt });
-      for (const event of page.items) {
+      if (signal?.aborted) throw signal.reason;
+      const params = { since_created_at: sinceCreatedAt, conversation_id: conversationId };
+      const data = await this.json<{ events: Record<string, unknown>[]; next_since_created_at?: string }>("GET", this.path(genieHandle, "/conversations/events"), params, undefined, signal);
+      for (const event of data.events.map((item) => toEvent(item))) {
         if (!event.event_id || !seenEventIds.has(event.event_id)) {
           if (event.event_id) seenEventIds.add(event.event_id);
           yield event;
         }
       }
-      if (!page.nextSinceCreatedAt) return;
-      sinceCreatedAt = page.nextSinceCreatedAt;
+      if (!data.next_since_created_at) return;
+      sinceCreatedAt = data.next_since_created_at;
     }
   }
 }

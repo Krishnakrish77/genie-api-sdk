@@ -219,10 +219,10 @@ def test_stream_honors_server_retry_delay(monkeypatch):
 
 def test_async_client_covers_all_rest_operations():
     async def run():
-        paths = []
+        requests = []
 
         async def handler(request):
-            paths.append((request.method, request.url.path))
+            requests.append(request)
             path = request.url.path
             if path.endswith("/conversations") and request.method == "GET":
                 return httpx.Response(200, json={"list": [{"conversation_id": "c"}], "total_count": 1})
@@ -230,6 +230,8 @@ def test_async_client_covers_all_rest_operations():
                 return httpx.Response(200, json={"conversation_id": "c"})
             if path.endswith("/messages") and request.method == "GET":
                 return httpx.Response(200, json={"messages": [{"message_id": "m", "source": "user", "content": "hello"}], "total_count": 1})
+            if path.endswith("/messages"):
+                return httpx.Response(200, json={"conversation_id": "c", "genie_run_id": "run"})
             if path.endswith("/events"):
                 return httpx.Response(200, json={"events": []})
             if path.endswith("/link"):
@@ -241,15 +243,29 @@ def test_async_client_covers_all_rest_operations():
             return httpx.Response(200, json={})
 
         client = AsyncGenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test"))
-        await client.list_conversations("genie")
+        await client.list_conversations("genie", limit=1, cursor="before")
         await client.create_conversation("genie")
         await client.get_conversation("genie", "c")
-        await client.list_messages("genie", "c")
-        await client.list_events("genie")
+        await client.list_messages("genie", "c", limit=1, cursor="message-before")
+        assert (await client.send_message("genie", "c", "hello", file_id="f")).genie_run_id == "run"
+        await client.list_events("genie", conversation_id="c", since_created_at="start", limit=1)
         await client.resolve_skill_approval("genie", "c", "call", "approved")
         await client.get_runtime_connection_link("genie", "attempt")
         await client.reject_runtime_connection("genie", "attempt")
         assert await client.upload_file("genie", "c", ("note.txt", io.BytesIO(b"hello"), "text/plain")) == "f"
-        assert {path for _, path in paths} >= {"/api/v1/genies/genie/chat/conversations", "/api/v1/genies/genie/chat/conversations/c", "/api/v1/genies/genie/chat/conversations/c/messages", "/api/v1/genies/genie/chat/conversations/events", "/api/v1/genies/genie/chat/conversations/c/skill_approval/call", "/api/v1/genies/genie/chat/runtime_connection/attempt/link", "/api/v1/genies/genie/chat/runtime_connection/attempt/reject", "/api/v1/genies/genie/chat/conversations/c/upload"}
+        paths = {request.url.path for request in requests}
+        assert paths >= {"/api/v1/genies/genie/chat/conversations", "/api/v1/genies/genie/chat/conversations/c", "/api/v1/genies/genie/chat/conversations/c/messages", "/api/v1/genies/genie/chat/conversations/events", "/api/v1/genies/genie/chat/conversations/c/skill_approval/call", "/api/v1/genies/genie/chat/runtime_connection/attempt/link", "/api/v1/genies/genie/chat/runtime_connection/attempt/reject", "/api/v1/genies/genie/chat/conversations/c/upload"}
+        message_request = next(request for request in requests if request.method == "POST" and request.url.path.endswith("/messages"))
+        assert json.loads(message_request.content) == {"message": "hello", "file_id": "f", "stream": False}
+        approval_request = next(request for request in requests if "/skill_approval/" in request.url.path)
+        assert json.loads(approval_request.content) == {"resolution": "approved"}
+        upload_request = next(request for request in requests if request.url.path.endswith("/upload"))
+        assert upload_request.headers["content-type"].startswith("multipart/form-data")
+        conversation_list = next(request for request in requests if request.method == "GET" and request.url.path.endswith("/conversations"))
+        assert dict(conversation_list.url.params) == {"limit": "1", "cursor": "before"}
+        messages_list = next(request for request in requests if request.method == "GET" and request.url.path.endswith("/messages"))
+        assert dict(messages_list.url.params) == {"limit": "1", "cursor": "message-before"}
+        events_list = next(request for request in requests if request.url.path.endswith("/events"))
+        assert dict(events_list.url.params) == {"since_created_at": "start", "conversation_id": "c", "limit": "1"}
 
     asyncio.run(run())

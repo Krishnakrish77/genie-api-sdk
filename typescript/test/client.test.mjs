@@ -144,6 +144,7 @@ test("covers conversation, event, approval, runtime connection, and upload opera
 test("honors stream retry delay and supports aborting the wait", async () => {
   const encoder = new TextEncoder();
   let calls = 0;
+  const abort = new AbortController();
   const client = new GenieClient({
     auth: new OAuthAuth(() => "token"),
     fetch: async () => {
@@ -154,6 +155,10 @@ test("honors stream retry delay and supports aborting the wait", async () => {
       return new Response(new ReadableStream({ start(controller) { controller.enqueue(encoder.encode(payload)); controller.close(); } }));
     }
   });
-  for await (const _event of client.streamMessage("genie", "conversation", "hello")) {}
-  assert.equal(calls, 2);
+  await assert.rejects(async () => {
+    for await (const event of client.streamMessage("genie", "conversation", "hello", undefined, 3, abort.signal)) {
+      if (event.type === "system.stream_interrupted") abort.abort(new Error("cancelled"));
+    }
+  }, /cancelled/);
+  assert.equal(calls, 1);
 });
