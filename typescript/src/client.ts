@@ -50,11 +50,45 @@ export class GenieClient {
     return this.json("POST", this.path(genieHandle, `/conversations/${conversationId}/messages`), undefined, { message, file_id: fileId, stream: false });
   }
 
-  streamMessage(genieHandle: string, conversationId: string, message: string, fileId?: string): AsyncIterable<Event> {
+  private streamMessageOnce(genieHandle: string, conversationId: string, message: string, fileId?: string): AsyncIterable<Event> {
     return this.stream("POST", this.path(genieHandle, `/conversations/${conversationId}/messages`), { message, file_id: fileId, stream: true });
   }
 
-  reconnect(genieHandle: string, conversationId: string, genieRunId: string, lastEventId?: string): AsyncIterable<Event> {
+  /** Streams a message with automatic reconnection and persisted-event replay. */
+  async *streamMessage(genieHandle: string, conversationId: string, message: string, fileId?: string, maxReconnects = 3): AsyncGenerator<Event> {
+    if (maxReconnects < 0) throw new Error("maxReconnects must be non-negative");
+    let stream = this.streamMessageOnce(genieHandle, conversationId, message, fileId);
+    let runId: string | undefined;
+    let lastEventId: string | undefined;
+    let lastCreatedAt: string | undefined;
+    const seenEventIds = new Set<string>();
+    let reconnects = 0;
+    for (;;) {
+      let interrupted = false;
+      try {
+        for await (const event of stream) {
+          if (event.event_id) { seenEventIds.add(event.event_id); lastEventId = event.event_id; }
+          if (event.created_at) lastCreatedAt = event.created_at;
+          runId = event.genie_run_id ?? runId;
+          yield event;
+          if (event.type === "system.stream_interrupted") { interrupted = true; break; }
+        }
+      } catch (error) {
+        if (!runId) throw error;
+        interrupted = true;
+      }
+      if (!interrupted) return;
+      if (runId && reconnects < maxReconnects) {
+        reconnects += 1;
+        stream = this.reconnect(genieHandle, conversationId, runId, lastEventId);
+        continue;
+      }
+      for await (const event of this.replayEvents(genieHandle, conversationId, lastCreatedAt, seenEventIds)) yield event;
+      return;
+    }
+  }
+
+  private reconnect(genieHandle: string, conversationId: string, genieRunId: string, lastEventId?: string): AsyncIterable<Event> {
     return this.stream("GET", this.path(genieHandle, `/conversations/${conversationId}/genie-runs/${genieRunId}`), undefined, lastEventId ? { "Last-Event-ID": lastEventId } : undefined);
   }
 
@@ -121,6 +155,20 @@ export class GenieClient {
       }
     }
     if (buffer) { const event = parseSseFrame(buffer); if (event) yield event; }
+  }
+
+  private async *replayEvents(genieHandle: string, conversationId: string, sinceCreatedAt: string | undefined, seenEventIds: Set<string>): AsyncGenerator<Event> {
+    for (;;) {
+      const page = await this.listEvents(genieHandle, { conversationId, sinceCreatedAt });
+      for (const event of page.items) {
+        if (!event.event_id || !seenEventIds.has(event.event_id)) {
+          if (event.event_id) seenEventIds.add(event.event_id);
+          yield event;
+        }
+      }
+      if (!page.nextSinceCreatedAt) return;
+      sinceCreatedAt = page.nextSinceCreatedAt;
+    }
   }
 }
 
