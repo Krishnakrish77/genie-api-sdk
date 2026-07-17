@@ -69,6 +69,10 @@ For rotating OAuth refresh tokens, use `RefreshableOAuthAuth` (or `AsyncRefresha
 
 When a safe read receives an authentication failure, a refreshable strategy is forced to refresh once and the read is retried once. Message submission, uploads, approvals, and other writes are never retried automatically.
 
+## Errors
+
+All API failures expose a status code, parsed response body, and request ID when the service sends `X-Request-Id`. Catch typed errors such as `AuthenticationError` (401), `RateLimitError` (429), and `InternalServerError` (5xx) to make recovery decisions without matching error text. This mirrors the typed status-error approach used by mature API SDKs. [OpenAI Python error handling](https://github.com/openai/openai-python/blob/main/README.md)
+
 ## Core workflow
 
 Create a conversation once, persist its ID against your application's user/channel identifier, then use that ID for every turn.

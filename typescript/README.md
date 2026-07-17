@@ -17,4 +17,6 @@ for await (const event of client.streamMessage("my-genie", conversation.conversa
 
 Use `new OAuthAuth(() => currentAccessToken())` as `auth` for OAuth-authenticated applications.
 
+For rotating OAuth credentials, use `RefreshableOAuthAuth`. Its `refreshAndPersist` callback must atomically refresh and persist the winning token set (for example, with a database transaction or distributed lock).
+
 `streamMessage()` reconnects interrupted streams automatically; use its `maxReconnects` flag to tune recovery. Type guards such as `isAgentMessageEvent()` narrow common event payloads safely.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GenieClient, OAuthAuth, RefreshableOAuthAuth } from "../dist/index.js";
+import { AuthenticationError, GenieClient, OAuthAuth, RefreshableOAuthAuth } from "../dist/index.js";
 
 test("parses CRLF SSE frames split at arbitrary chunk boundaries", async () => {
   const encoder = new TextEncoder();
@@ -70,6 +70,18 @@ test("retries safe reads once after forced refresh but never retries message pos
   await assert.rejects(() => client.sendMessage("genie", "conversation", "hello"));
   assert.equal(requests.length, 3);
   assert.equal(auth.forceRefreshCalls, 1);
+});
+
+test("throws a typed authentication error with the request ID", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => new Response(JSON.stringify({ error: "invalid token" }), { status: 401, headers: { "x-request-id": "request-123" } })
+  });
+
+  await assert.rejects(
+    () => client.sendMessage("genie", "conversation", "hello"),
+    (error) => error instanceof AuthenticationError && error.requestId === "request-123"
+  );
 });
 
 test("reconnects after an interrupted stream", async () => {

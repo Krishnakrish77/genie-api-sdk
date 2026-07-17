@@ -17,4 +17,6 @@ for event in client.stream_message("my-genie", conversation.conversation_id, "Su
 
 For OAuth, pass `OAuthAuth(lambda: current_access_token())` as `auth`.
 
+For rotating OAuth credentials, use `RefreshableOAuthAuth`. Its `refresh_and_persist` callback must atomically refresh and save the winning token set (for example, with a database transaction or distributed lock).
+
 Use `AsyncGenieClient` with `async with` for ASGI applications and other asynchronous services. `stream_message()` automatically reconnects interrupted streams; use its `max_reconnects` flag to tune recovery.

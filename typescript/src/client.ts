@@ -4,11 +4,19 @@ import type { Auth } from "./auth.js";
 const DEFAULT_BASE_URL = "https://genie-api.workato.com";
 
 export class GenieApiError extends Error {
-  constructor(public readonly status: number, public readonly body: unknown) {
+  constructor(public readonly status: number, public readonly body: unknown, public readonly requestId?: string) {
     super(`Genie API request failed with status ${status}`);
     this.name = "GenieApiError";
   }
 }
+export class AuthenticationError extends GenieApiError {}
+export class RateLimitError extends GenieApiError {}
+export class BadRequestError extends GenieApiError {}
+export class PermissionDeniedError extends GenieApiError {}
+export class NotFoundError extends GenieApiError {}
+export class ConflictError extends GenieApiError {}
+export class UnprocessableEntityError extends GenieApiError {}
+export class InternalServerError extends GenieApiError {}
 
 export class GenieClient {
   private readonly baseUrl: string;
@@ -31,20 +39,20 @@ export class GenieClient {
   }
 
   getConversation(genieHandle: string, conversationId: string): Promise<Conversation> {
-    return this.json("GET", this.path(genieHandle, `/conversations/${conversationId}`));
+    return this.json("GET", this.path(genieHandle, `/conversations/${this.id(conversationId)}`));
   }
 
   async listMessages(genieHandle: string, conversationId: string, options: { limit?: number; cursor?: string } = {}): Promise<Page<Message>> {
-    const data = await this.json<{ messages: Message[]; total_count: number; cursor?: string }>("GET", this.path(genieHandle, `/conversations/${conversationId}/messages`), options);
+    const data = await this.json<{ messages: Message[]; total_count: number; cursor?: string }>("GET", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), options);
     return { items: data.messages, totalCount: data.total_count, cursor: data.cursor };
   }
 
   sendMessage(genieHandle: string, conversationId: string, message: string, fileId?: string): Promise<Run> {
-    return this.json("POST", this.path(genieHandle, `/conversations/${conversationId}/messages`), undefined, { message, file_id: fileId, stream: false });
+    return this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), undefined, { message, file_id: fileId, stream: false });
   }
 
   private streamMessageOnce(genieHandle: string, conversationId: string, message: string, fileId?: string): AsyncIterable<Event> {
-    return this.stream("POST", this.path(genieHandle, `/conversations/${conversationId}/messages`), { message, file_id: fileId, stream: true });
+    return this.stream("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), { message, file_id: fileId, stream: true });
   }
 
   /** Streams a message with automatic reconnection and persisted-event replay. */
@@ -82,7 +90,7 @@ export class GenieClient {
   }
 
   private reconnect(genieHandle: string, conversationId: string, genieRunId: string, lastEventId?: string): AsyncIterable<Event> {
-    return this.stream("GET", this.path(genieHandle, `/conversations/${conversationId}/genie-runs/${genieRunId}`), undefined, lastEventId ? { "Last-Event-ID": lastEventId } : undefined);
+    return this.stream("GET", this.path(genieHandle, `/conversations/${this.id(conversationId)}/genie-runs/${this.id(genieRunId)}`), undefined, lastEventId ? { "Last-Event-ID": lastEventId } : undefined);
   }
 
   async listEvents(genieHandle: string, options: { sinceCreatedAt?: string; conversationId?: string; limit?: number } = {}): Promise<Page<Event>> {
@@ -92,24 +100,25 @@ export class GenieClient {
   }
 
   async resolveSkillApproval(genieHandle: string, conversationId: string, callId: string, resolution: SkillResolution, rejectionReason?: string): Promise<void> {
-    await this.json("POST", this.path(genieHandle, `/conversations/${conversationId}/skill_approval/${callId}`), undefined, { resolution, rejection_reason: rejectionReason });
+    await this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/skill_approval/${this.id(callId)}`), undefined, { resolution, rejection_reason: rejectionReason });
   }
 
   getRuntimeConnectionLink(genieHandle: string, attemptId: string): Promise<RuntimeConnectionLink> {
-    return this.json("POST", this.path(genieHandle, `/runtime_connection/${attemptId}/link`));
+    return this.json("POST", this.path(genieHandle, `/runtime_connection/${this.id(attemptId)}/link`));
   }
 
   async rejectRuntimeConnection(genieHandle: string, attemptId: string, reason?: string): Promise<void> {
-    await this.json("POST", this.path(genieHandle, `/runtime_connection/${attemptId}/reject`), undefined, { reason });
+    await this.json("POST", this.path(genieHandle, `/runtime_connection/${this.id(attemptId)}/reject`), undefined, { reason });
   }
 
   async uploadFile(genieHandle: string, conversationId: string, file: Blob): Promise<string> {
     const form = new FormData(); form.append("file", file);
-    const response = await this.request("POST", this.path(genieHandle, `/conversations/${conversationId}/upload`), undefined, form);
+    const response = await this.request("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/upload`), undefined, form);
     return (await response.json() as { file_id: string }).file_id;
   }
 
-  private path(genieHandle: string, suffix: string): string { return `/api/v1/genies/${encodeURIComponent(genieHandle)}/chat${suffix}`; }
+  private id(value: string): string { return encodeURIComponent(value); }
+  private path(genieHandle: string, suffix: string): string { return `/api/v1/genies/${this.id(genieHandle)}/chat${suffix}`; }
 
   private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown): Promise<T> {
     const response = await this.request(method, path, params, body);
@@ -131,7 +140,15 @@ export class GenieClient {
     }
     if (!response.ok) {
       let errorBody: unknown; try { errorBody = await response.json(); } catch { errorBody = await response.text(); }
-      throw new GenieApiError(response.status, errorBody);
+      const ErrorType = response.status === 400 ? BadRequestError
+        : response.status === 401 ? AuthenticationError
+        : response.status === 403 ? PermissionDeniedError
+        : response.status === 404 ? NotFoundError
+        : response.status === 409 ? ConflictError
+        : response.status === 422 ? UnprocessableEntityError
+        : response.status === 429 ? RateLimitError
+        : response.status >= 500 ? InternalServerError : GenieApiError;
+      throw new ErrorType(response.status, errorBody, response.headers.get("x-request-id") ?? undefined);
     }
     return response;
   }

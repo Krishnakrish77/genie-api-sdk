@@ -1,11 +1,12 @@
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 
 import httpx
 
 from genie_api_sdk import (AgentMessageEvent, ApiKeyAuth, AsyncGenieClient,
                            AsyncOAuthAuth, GenieClient, OAuthTokens,
-                           RefreshableOAuthAuth)
+                           RefreshableOAuthAuth, AuthenticationError)
 
 
 def test_shared_http_client_keeps_each_sdk_clients_credentials_isolated():
@@ -124,7 +125,7 @@ def test_safe_reads_refresh_once_after_unauthorized_but_messages_do_not_retry():
     auth.token = "old"
     try:
         client.send_message("genie", "conversation", "hello")
-    except httpx.HTTPStatusError:
+    except AuthenticationError:
         pass
     else:
         raise AssertionError("expected authentication failure")
@@ -144,3 +145,17 @@ def test_async_oauth_provider_is_awaited():
         return await client.create_conversation("genie")
 
     assert asyncio.run(run()).conversation_id == "conversation"
+
+
+def test_paths_are_encoded_and_absent_optional_fields_are_omitted():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"conversation_id": "conversation", "genie_run_id": "run"})
+
+    client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    client.send_message("genie/name", "conversation/name", "hello")
+
+    assert requests[0].url.raw_path == b"/api/v1/genies/genie%2Fname/chat/conversations/conversation%2Fname/messages"
+    assert json.loads(requests[0].content) == {"message": "hello", "stream": False}

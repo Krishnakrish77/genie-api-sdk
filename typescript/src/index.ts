@@ -1,4 +1,4 @@
-export { GenieClient, GenieApiError } from "./client.js";
+export { AuthenticationError, BadRequestError, ConflictError, GenieClient, GenieApiError, InternalServerError, NotFoundError, PermissionDeniedError, RateLimitError, UnprocessableEntityError } from "./client.js";
 export { ApiKeyAuth, OAuthAuth, RefreshableOAuthAuth } from "./auth.js";
 export type {
   AgentMessageEvent, ClientOptions, Conversation, Event, EventData, EventBase,
