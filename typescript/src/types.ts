@@ -1,10 +1,8 @@
+import type { Auth } from "./auth.js";
+
 export interface ClientOptions {
-  /** OAuth access token. Mutually exclusive with apiKey. */
-  accessToken?: string;
-  /** Static Genie client API key. Requires idpUserId. */
-  apiKey?: string;
-  /** Workato IdP user ID asserted with an API key. */
-  idpUserId?: string;
+  /** Supplies fresh authorization headers for each request. */
+  auth: Auth;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
 }
