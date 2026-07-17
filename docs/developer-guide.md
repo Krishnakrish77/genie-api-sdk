@@ -98,36 +98,23 @@ Call `send_message` / `sendMessage` when you want the asynchronous `Run` respons
 
 Streams end normally with `processing.finished`. Ignore `system.ping`. Treat `system.stream_interrupted` as a recovery signal, not a failed turn.
 
-For the usual case, prefer the built-in recovery helpers. They reconnect with the most recent event ID and replay persisted events after repeated interruption:
+`stream_message` / `streamMessage` is the single streaming API. It reconnects with the most recent event ID and replays persisted events after repeated interruption:
 
 ```python
 from genie_api_sdk import AgentMessageEvent
 
-for event in client.stream_message_with_recovery(handle, conversation_id, "Show my open deals"):
+for event in client.stream_message(handle, conversation_id, "Show my open deals"):
     if isinstance(event, AgentMessageEvent):
         print(event.message)
 ```
 
 ```ts
-for await (const event of client.streamMessageWithRecovery(handle, conversationId, "Show my open deals")) {
+for await (const event of client.streamMessage(handle, conversationId, "Show my open deals")) {
   if (isAgentMessageEvent(event)) console.log(event.data.message);
 }
 ```
 
-Reconnect from the last successfully persisted event ID:
-
-```python
-for event in client.reconnect(handle, conversation_id, genie_run_id, last_event_id=last_event_id):
-    process(event)
-```
-
-```ts
-for await (const event of client.reconnect(handle, conversationId, genieRunId, lastEventId)) {
-  process(event);
-}
-```
-
-For longer outages, use `list_events` / `listEvents`, store `next_since_created_at`, and replay the returned events. Workato retains events for 24 hours.
+The SDK retries three interrupted streams by default. Set `max_reconnects` / `maxReconnects` on `stream_message` / `streamMessage` when your application needs a different limit. After that limit, it replays persisted events automatically. Workato retains events for 24 hours.
 
 ## Paused turns
 
@@ -170,6 +157,6 @@ The test suite must not call the live Workato service. Use `httpx.MockTransport`
 from genie_api_sdk import AsyncGenieClient
 
 async with AsyncGenieClient(api_key="...", idp_user_id="user-123") as client:
-    async for event in client.stream_message_with_recovery("my-genie", "conversation-id", "Hello"):
+    async for event in client.stream_message("my-genie", "conversation-id", "Hello"):
         process(event)
 ```

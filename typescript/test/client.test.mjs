@@ -46,7 +46,7 @@ test("reconnects after an interrupted stream", async () => {
   });
 
   const events = [];
-  for await (const event of client.streamMessageWithRecovery("genie", "conversation", "hello")) events.push(event);
+  for await (const event of client.streamMessage("genie", "conversation", "hello")) events.push(event);
 
   assert.equal(events[2].data.message, "Recovered");
   assert.equal(requests.length, 2);

@@ -17,4 +17,4 @@ for await (const event of client.streamMessage("my-genie", conversation.conversa
 
 Use `{ accessToken }` rather than `{ apiKey, idpUserId }` for OAuth-authenticated applications.
 
-Use `streamMessageWithRecovery()` to reconnect interrupted streams automatically. Type guards such as `isAgentMessageEvent()` narrow common event payloads safely.
+`streamMessage()` reconnects interrupted streams automatically; use its `maxReconnects` flag to tune recovery. Type guards such as `isAgentMessageEvent()` narrow common event payloads safely.

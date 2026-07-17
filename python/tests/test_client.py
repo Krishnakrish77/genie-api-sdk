@@ -37,7 +37,7 @@ def test_recovery_reconnects_from_last_event_and_returns_typed_events():
         return httpx.Response(200, content=body)
 
     client = GenieClient(api_key="key", idp_user_id="user", http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
-    events = list(client.stream_message_with_recovery("genie", "conversation", "hello"))
+    events = list(client.stream_message("genie", "conversation", "hello"))
 
     assert isinstance(events[2], AgentMessageEvent)
     assert events[2].message == "Recovered"

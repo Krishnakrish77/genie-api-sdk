@@ -50,14 +50,14 @@ export class GenieClient {
     return this.json("POST", this.path(genieHandle, `/conversations/${conversationId}/messages`), undefined, { message, file_id: fileId, stream: false });
   }
 
-  streamMessage(genieHandle: string, conversationId: string, message: string, fileId?: string): AsyncIterable<Event> {
+  private streamMessageOnce(genieHandle: string, conversationId: string, message: string, fileId?: string): AsyncIterable<Event> {
     return this.stream("POST", this.path(genieHandle, `/conversations/${conversationId}/messages`), { message, file_id: fileId, stream: true });
   }
 
-  /** Streams a message and reconnects after interrupted streams, replaying persisted events as a fallback. */
-  async *streamMessageWithRecovery(genieHandle: string, conversationId: string, message: string, fileId?: string, maxReconnects = 3): AsyncGenerator<Event> {
+  /** Streams a message with automatic reconnection and persisted-event replay. */
+  async *streamMessage(genieHandle: string, conversationId: string, message: string, fileId?: string, maxReconnects = 3): AsyncGenerator<Event> {
     if (maxReconnects < 0) throw new Error("maxReconnects must be non-negative");
-    let stream = this.streamMessage(genieHandle, conversationId, message, fileId);
+    let stream = this.streamMessageOnce(genieHandle, conversationId, message, fileId);
     let runId: string | undefined;
     let lastEventId: string | undefined;
     let lastCreatedAt: string | undefined;
@@ -88,7 +88,7 @@ export class GenieClient {
     }
   }
 
-  reconnect(genieHandle: string, conversationId: string, genieRunId: string, lastEventId?: string): AsyncIterable<Event> {
+  private reconnect(genieHandle: string, conversationId: string, genieRunId: string, lastEventId?: string): AsyncIterable<Event> {
     return this.stream("GET", this.path(genieHandle, `/conversations/${conversationId}/genie-runs/${genieRunId}`), undefined, lastEventId ? { "Last-Event-ID": lastEventId } : undefined);
   }
 

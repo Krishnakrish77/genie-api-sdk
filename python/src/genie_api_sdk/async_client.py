@@ -60,10 +60,10 @@ class AsyncGenieClient:
         data = (await self._client.post(self._path(genie_handle, f"/conversations/{conversation_id}/messages"), json={"message": message, "file_id": file_id, "stream": False}, headers=self._headers)).raise_for_status().json()
         return Run(data["conversation_id"], data["genie_run_id"])
 
-    def stream_message(self, genie_handle: str, conversation_id: str, message: str, *, file_id: Optional[str] = None) -> AsyncIterator[Event]:
+    def _stream_message_once(self, genie_handle: str, conversation_id: str, message: str, *, file_id: Optional[str] = None) -> AsyncIterator[Event]:
         return self._stream("POST", self._path(genie_handle, f"/conversations/{conversation_id}/messages"), json={"message": message, "file_id": file_id, "stream": True})
 
-    def reconnect(self, genie_handle: str, conversation_id: str, genie_run_id: str, *, last_event_id: Optional[str] = None) -> AsyncIterator[Event]:
+    def _reconnect(self, genie_handle: str, conversation_id: str, genie_run_id: str, *, last_event_id: Optional[str] = None) -> AsyncIterator[Event]:
         headers = {"Last-Event-ID": last_event_id} if last_event_id else None
         return self._stream("GET", self._path(genie_handle, f"/conversations/{conversation_id}/genie-runs/{genie_run_id}"), headers=headers)
 
@@ -86,10 +86,10 @@ class AsyncGenieClient:
         response = await self._client.post(self._path(genie_handle, f"/conversations/{conversation_id}/upload"), files={"file": file}, headers=self._headers)
         return response.raise_for_status().json()["file_id"]
 
-    async def stream_message_with_recovery(self, genie_handle: str, conversation_id: str, message: str, *, file_id: Optional[str] = None, max_reconnects: int = 3) -> AsyncIterator[Event]:
+    async def stream_message(self, genie_handle: str, conversation_id: str, message: str, *, file_id: Optional[str] = None, max_reconnects: int = 3) -> AsyncIterator[Event]:
         if max_reconnects < 0:
             raise ValueError("max_reconnects must be non-negative")
-        stream = self.stream_message(genie_handle, conversation_id, message, file_id=file_id)
+        stream = self._stream_message_once(genie_handle, conversation_id, message, file_id=file_id)
         run_id: Optional[str] = None
         last_event_id: Optional[str] = None
         last_created_at: Optional[str] = None
@@ -117,7 +117,7 @@ class AsyncGenieClient:
                 return
             if run_id and reconnects < max_reconnects:
                 reconnects += 1
-                stream = self.reconnect(genie_handle, conversation_id, run_id, last_event_id=last_event_id)
+                stream = self._reconnect(genie_handle, conversation_id, run_id, last_event_id=last_event_id)
                 continue
             async for event in self._replay_events(genie_handle, conversation_id, last_created_at, seen_ids):
                 yield event
