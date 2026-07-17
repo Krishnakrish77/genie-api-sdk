@@ -4,20 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish both packages after validation (requires protected environments and secrets)
+        description: Publish both packages after validation (requires protected environments and trusted publishers)
         required: true
         default: false
         type: boolean
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Require the protected main branch for publishing
+        if: inputs.publish
+        run: test "$GITHUB_REF" = "refs/heads/main"
       - uses: actions/setup-python@v5
         with: { python-version: "3.14" }
       - uses: actions/setup-node@v4
@@ -26,16 +28,28 @@ jobs:
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       - run: python -m pip install --upgrade pip build twine
-      - name: Verify package versions match
+      - name: Verify equivalent package versions
         run: |
-          python -c 'import json, tomllib; py=tomllib.load(open("python/pyproject.toml", "rb"))["project"]["version"]; ts=json.load(open("typescript/package.json"))["version"]; assert py == ts, f"Version mismatch: Python={py}, TypeScript={ts}"'
+          python - <<'PY'
+          import json, re, tomllib
+          python_version = tomllib.load(open("python/pyproject.toml", "rb"))["project"]["version"]
+          npm_version = json.load(open("typescript/package.json"))["version"]
+          python_match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:b(\d+))?", python_version)
+          npm_match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:-beta\.(\d+))?", npm_version)
+          assert python_match and npm_match, "Only stable or beta versions are supported"
+          assert python_match.groups() == npm_match.groups(), f"Version mismatch: Python={python_version}, npm={npm_version}"
+          PY
       - run: python -m build python && python -m twine check python/dist/*
-      - run: npm ci && npm run check && npm test && npm pack --dry-run
+      - run: npm ci && npm run check && npm test && npm pack
         working-directory: typescript
       - uses: actions/upload-artifact@v4
         with:
           name: python-dist
           path: python/dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-dist
+          path: typescript/*.tgz
 
   publish-python:
     needs: build
@@ -54,11 +68,35 @@ jobs:
     if: inputs.publish
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 26, registry-url: "https://registry.npmjs.org" }
-      - run: npm ci && npm publish --provenance
-        working-directory: typescript
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with: { name: npm-dist, path: dist }
+      - name: Publish npm package
+        run: |
+          version=$(node -p 'require("./typescript/package.json").version')
+          case "$version" in
+            *-*) dist_tag=beta ;;
+            *) dist_tag=latest ;;
+          esac
+          npm publish dist/*.tgz --tag "$dist_tag"
+
+  tag-release:
+    needs: [publish-python, publish-npm]
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release tag
+        run: |
+          version=$(node -p 'require("./typescript/package.json").version')
+          tag="v$version"
+          test -z "$(git ls-remote --tags origin "refs/tags/$tag")"
+          git tag -a "$tag" -m "Release $tag"
+          git push origin "$tag"

@@ -1,6 +1,6 @@
 {
   "name": "genie-api-sdk",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "Unofficial TypeScript SDK for the Genie Headless API",
   "license": "MIT",
   "homepage": "https://github.com/Krishnakrish77/genie-api-sdk#readme",

@@ -30,8 +30,7 @@ Never commit API keys, access tokens, or end-user IDs.
 Python 3.9 or later is required.
 
 ```sh
-cd python
-python -m pip install -e '.[dev]'
+python -m pip install genie-api-sdk
 ```
 
 ### TypeScript
@@ -39,10 +38,10 @@ python -m pip install -e '.[dev]'
 Node.js 18 or later is required.
 
 ```sh
-cd typescript
-npm install
-npm run build
+npm install genie-api-sdk
 ```
+
+To install the npm beta channel, use `npm install genie-api-sdk@beta`. Python prereleases require `python -m pip install --pre genie-api-sdk` when no stable release is selected.
 
 ## Authentication
 
@@ -126,7 +125,7 @@ for await (const event of client.streamMessage(handle, conversationId, "Show my 
 }
 ```
 
-The SDK retries three interrupted streams by default. Set `max_reconnects` / `maxReconnects` on `stream_message` / `streamMessage` when your application needs a different limit. After that limit, it replays persisted events automatically. Workato retains events for 24 hours.
+The SDK retries three interrupted streams by default, honoring the server's `retry_after_ms` delay. Set `max_reconnects` / `maxReconnects` on `stream_message` / `streamMessage` when your application needs a different limit. After that limit, it replays persisted events automatically. Workato retains events for 24 hours. TypeScript callers can pass an `AbortSignal` as the final `streamMessage` argument to cancel an active stream or recovery wait.
 
 ## Paused turns
 

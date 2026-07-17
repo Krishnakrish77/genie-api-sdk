@@ -51,19 +51,20 @@ export class GenieClient {
     return this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), undefined, { message, file_id: fileId, stream: false });
   }
 
-  private streamMessageOnce(genieHandle: string, conversationId: string, message: string, fileId?: string): AsyncIterable<Event> {
-    return this.stream("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), { message, file_id: fileId, stream: true });
+  private streamMessageOnce(genieHandle: string, conversationId: string, message: string, fileId?: string, signal?: AbortSignal): AsyncIterable<Event> {
+    return this.stream("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), { message, file_id: fileId, stream: true }, undefined, signal);
   }
 
   /** Streams a message with automatic reconnection and persisted-event replay. */
-  async *streamMessage(genieHandle: string, conversationId: string, message: string, fileId?: string, maxReconnects = 3): AsyncGenerator<Event> {
+  async *streamMessage(genieHandle: string, conversationId: string, message: string, fileId?: string, maxReconnects = 3, signal?: AbortSignal): AsyncGenerator<Event> {
     if (maxReconnects < 0) throw new Error("maxReconnects must be non-negative");
-    let stream = this.streamMessageOnce(genieHandle, conversationId, message, fileId);
+    let stream = this.streamMessageOnce(genieHandle, conversationId, message, fileId, signal);
     let runId: string | undefined;
     let lastEventId: string | undefined;
     let lastCreatedAt: string | undefined;
     const seenEventIds = new Set<string>();
     let reconnects = 0;
+    let retryAfterMs = 0;
     for (;;) {
       let interrupted = false;
       try {
@@ -72,25 +73,27 @@ export class GenieClient {
           if (event.created_at) lastCreatedAt = event.created_at;
           runId = event.genie_run_id ?? runId;
           yield event;
-          if (event.type === "system.stream_interrupted") { interrupted = true; break; }
+          if (event.type === "system.stream_interrupted") { retryAfterMs = Math.max(0, Number(event.data.retry_after_ms) || 0); interrupted = true; break; }
         }
       } catch (error) {
+        if (signal?.aborted) throw signal.reason ?? error;
         if (!runId) throw error;
         interrupted = true;
       }
       if (!interrupted) return;
       if (runId && reconnects < maxReconnects) {
         reconnects += 1;
-        stream = this.reconnect(genieHandle, conversationId, runId, lastEventId);
+        if (retryAfterMs) await delay(retryAfterMs, signal);
+        stream = this.reconnect(genieHandle, conversationId, runId, lastEventId, signal);
         continue;
       }
-      for await (const event of this.replayEvents(genieHandle, conversationId, lastCreatedAt, seenEventIds)) yield event;
+      for await (const event of this.replayEvents(genieHandle, conversationId, lastCreatedAt, seenEventIds, signal)) yield event;
       return;
     }
   }
 
-  private reconnect(genieHandle: string, conversationId: string, genieRunId: string, lastEventId?: string): AsyncIterable<Event> {
-    return this.stream("GET", this.path(genieHandle, `/conversations/${this.id(conversationId)}/genie-runs/${this.id(genieRunId)}`), undefined, lastEventId ? { "Last-Event-ID": lastEventId } : undefined);
+  private reconnect(genieHandle: string, conversationId: string, genieRunId: string, lastEventId?: string, signal?: AbortSignal): AsyncIterable<Event> {
+    return this.stream("GET", this.path(genieHandle, `/conversations/${this.id(conversationId)}/genie-runs/${this.id(genieRunId)}`), undefined, lastEventId ? { "Last-Event-ID": lastEventId } : undefined, signal);
   }
 
   async listEvents(genieHandle: string, options: { sinceCreatedAt?: string; conversationId?: string; limit?: number } = {}): Promise<Page<Event>> {
@@ -120,18 +123,18 @@ export class GenieClient {
   private id(value: string): string { return encodeURIComponent(value); }
   private path(genieHandle: string, suffix: string): string { return `/api/v1/genies/${this.id(genieHandle)}/chat${suffix}`; }
 
-  private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown): Promise<T> {
-    const response = await this.request(method, path, params, body);
+  private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown, signal?: AbortSignal): Promise<T> {
+    const response = await this.request(method, path, params, body, undefined, signal);
     return response.json() as Promise<T>;
   }
 
-  private async request(method: string, path: string, params?: Record<string, unknown>, body?: unknown, extraHeaders?: HeadersInit): Promise<Response> {
+  private async request(method: string, path: string, params?: Record<string, unknown>, body?: unknown, extraHeaders?: HeadersInit, signal?: AbortSignal): Promise<Response> {
     const url = new URL(path, this.baseUrl);
     for (const [key, value] of Object.entries(params ?? {})) if (value !== undefined) url.searchParams.set(key, String(value));
     const isForm = body instanceof FormData;
     const sendWithAuth = async () => {
       const headers = { Accept: "application/json", ...(await this.auth.headers()), ...(isForm ? {} : body === undefined ? {} : { "Content-Type": "application/json" }), ...extraHeaders };
-      return this.fetchImpl(url, { method, headers, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body) });
+      return this.fetchImpl(url, { method, headers, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body), signal });
     };
     let response = await sendWithAuth();
     if (response.status === 401 && method === "GET" && this.auth.forceRefresh) {
@@ -153,8 +156,8 @@ export class GenieClient {
     return response;
   }
 
-  private async *stream(method: string, path: string, body?: unknown, streamHeaders?: HeadersInit): AsyncGenerator<Event> {
-    const response = await this.request(method, path, undefined, body, { Accept: "text/event-stream", ...streamHeaders });
+  private async *stream(method: string, path: string, body?: unknown, streamHeaders?: HeadersInit, signal?: AbortSignal): AsyncGenerator<Event> {
+    const response = await this.request(method, path, undefined, body, { Accept: "text/event-stream", ...streamHeaders }, signal);
     if (!response.body) throw new Error("The response did not include a readable SSE body");
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
@@ -171,19 +174,29 @@ export class GenieClient {
     if (buffer) { const event = parseSseFrame(buffer); if (event) yield event; }
   }
 
-  private async *replayEvents(genieHandle: string, conversationId: string, sinceCreatedAt: string | undefined, seenEventIds: Set<string>): AsyncGenerator<Event> {
+  private async *replayEvents(genieHandle: string, conversationId: string, sinceCreatedAt: string | undefined, seenEventIds: Set<string>, signal?: AbortSignal): AsyncGenerator<Event> {
     for (;;) {
-      const page = await this.listEvents(genieHandle, { conversationId, sinceCreatedAt });
-      for (const event of page.items) {
+      if (signal?.aborted) throw signal.reason;
+      const params = { since_created_at: sinceCreatedAt, conversation_id: conversationId };
+      const data = await this.json<{ events: Record<string, unknown>[]; next_since_created_at?: string }>("GET", this.path(genieHandle, "/conversations/events"), params, undefined, signal);
+      for (const event of data.events.map((item) => toEvent(item))) {
         if (!event.event_id || !seenEventIds.has(event.event_id)) {
           if (event.event_id) seenEventIds.add(event.event_id);
           yield event;
         }
       }
-      if (!page.nextSinceCreatedAt) return;
-      sinceCreatedAt = page.nextSinceCreatedAt;
+      if (!data.next_since_created_at) return;
+      sinceCreatedAt = data.next_since_created_at;
     }
   }
+}
+
+function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const timer = setTimeout(resolve, milliseconds);
+    signal?.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
 }
 
 function parseSseFrame(frame: string): Event | undefined {

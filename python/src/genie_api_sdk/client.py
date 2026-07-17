@@ -1,6 +1,7 @@
 """Synchronous client for the Genie Headless API."""
 
 import json
+import time
 from typing import BinaryIO, Iterator, Mapping, Optional, Set, Tuple, Union
 from urllib.parse import quote
 
@@ -18,7 +19,7 @@ class GenieClient:
                  timeout: float = 30.0, http_client: Optional[httpx.Client] = None) -> None:
         self._owns_client = http_client is None
         self._auth = auth
-        self._client = http_client or httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout)
+        self._client = http_client or httpx.Client(base_url=base_url.rstrip("/"), timeout=httpx.Timeout(timeout, read=None))
 
     def close(self) -> None:
         if self._owns_client:
@@ -91,6 +92,7 @@ class GenieClient:
             last_created_at: Optional[str] = None
             seen_ids: Set[str] = set()
             reconnects = 0
+            retry_after_ms = 0
             while True:
                 interrupted = False
                 try:
@@ -103,6 +105,7 @@ class GenieClient:
                         run_id = event.genie_run_id or run_id
                         yield event
                         if event.type == "system.stream_interrupted":
+                            retry_after_ms = max(0, int(event.data.get("retry_after_ms") or 0))
                             interrupted = True
                             break
                 except httpx.TransportError:
@@ -113,6 +116,8 @@ class GenieClient:
                     return
                 if run_id and reconnects < max_reconnects:
                     reconnects += 1
+                    if retry_after_ms:
+                        time.sleep(retry_after_ms / 1000)
                     stream = self._reconnect(genie_handle, conversation_id, run_id, last_event_id=last_event_id)
                     continue
                 yield from self._replay_events(genie_handle, conversation_id, last_created_at, seen_ids)
