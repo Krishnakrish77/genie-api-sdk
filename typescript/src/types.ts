@@ -42,7 +42,7 @@ export type EventData = Record<string, unknown> & {
   runtime_connection_attempt_id?: string;
 };
 
-export interface Event {
+export interface EventBase {
   type: string;
   event_id?: string;
   conversation_id?: string;
@@ -51,6 +51,45 @@ export interface Event {
   seq_num?: number;
   created_at?: string;
   data: EventData;
+}
+
+export interface AgentMessageEvent extends EventBase {
+  type: "agent.message";
+  data: EventData & { message: string };
+}
+
+export interface SkillConfirmationRequiredEvent extends EventBase {
+  type: "skill.confirmation_required";
+  data: EventData & { call_id: string; skill_name: string; skill_id: string };
+}
+
+export interface RuntimeConnectionAuthRequiredEvent extends EventBase {
+  type: "runtime_connection.auth_required";
+  data: EventData & { runtime_connection_attempt_id: string };
+}
+
+export interface StreamInterruptedEvent extends EventBase {
+  type: "system.stream_interrupted";
+  data: EventData & { last_seq_num?: number; reason?: string; retry_after_ms?: number };
+}
+
+/** Unknown future event type. Its original payload is preserved in ``data``. */
+export interface Event extends EventBase {}
+
+export function isAgentMessageEvent(event: Event): event is AgentMessageEvent {
+  return event.type === "agent.message" && typeof event.data.message === "string";
+}
+
+export function isSkillConfirmationRequiredEvent(event: Event): event is SkillConfirmationRequiredEvent {
+  return event.type === "skill.confirmation_required" && typeof event.data.call_id === "string";
+}
+
+export function isRuntimeConnectionAuthRequiredEvent(event: Event): event is RuntimeConnectionAuthRequiredEvent {
+  return event.type === "runtime_connection.auth_required" && typeof event.data.runtime_connection_attempt_id === "string";
+}
+
+export function isStreamInterruptedEvent(event: Event): event is StreamInterruptedEvent {
+  return event.type === "system.stream_interrupted";
 }
 
 export type SkillResolution = "approved" | "rejected";

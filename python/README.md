@@ -16,3 +16,5 @@ for event in client.stream_message("my-genie", conversation.conversation_id, "Su
 ```
 
 For OAuth access tokens, construct the client with `access_token` instead of `api_key` and `idp_user_id`.
+
+Use `AsyncGenieClient` with `async with` for ASGI applications and other asynchronous services. `stream_message_with_recovery()` automatically reconnects interrupted streams.

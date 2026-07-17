@@ -1,7 +1,7 @@
 """Public response models for the Genie Headless API."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, Generic, List, Mapping, Optional, TypeVar
+from typing import Any, Generic, List, Mapping, Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -56,7 +56,7 @@ class Event:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any], event_type: Optional[str] = None, event_id: Optional[str] = None) -> "Event":
         base_keys = {"type", "event_id", "conversation_id", "genie_handle", "genie_run_id", "seq_num", "created_at"}
-        return cls(
+        event = cls(
             type=event_type or str(value.get("type", "message")),
             event_id=event_id or value.get("event_id"),
             conversation_id=value.get("conversation_id"),
@@ -66,6 +66,47 @@ class Event:
             created_at=value.get("created_at"),
             data={key: item for key, item in value.items() if key not in base_keys},
         )
+        if event.type == "agent.message":
+            return AgentMessageEvent(**event.__dict__, message=str(event.data.get("message", "")))
+        if event.type == "skill.confirmation_required":
+            return SkillConfirmationRequiredEvent(
+                **event.__dict__, call_id=str(event.data.get("call_id", "")),
+                skill_name=str(event.data.get("skill_name", "")), skill_id=str(event.data.get("skill_id", "")),
+            )
+        if event.type == "runtime_connection.auth_required":
+            return RuntimeConnectionAuthRequiredEvent(
+                **event.__dict__, runtime_connection_attempt_id=str(event.data.get("runtime_connection_attempt_id", "")),
+            )
+        if event.type == "system.stream_interrupted":
+            return StreamInterruptedEvent(
+                **event.__dict__, last_seq_num=event.data.get("last_seq_num"),
+                reason=event.data.get("reason"), retry_after_ms=event.data.get("retry_after_ms"),
+            )
+        return event
+
+
+@dataclass(frozen=True)
+class AgentMessageEvent(Event):
+    message: str
+
+
+@dataclass(frozen=True)
+class SkillConfirmationRequiredEvent(Event):
+    call_id: str
+    skill_name: str
+    skill_id: str
+
+
+@dataclass(frozen=True)
+class RuntimeConnectionAuthRequiredEvent(Event):
+    runtime_connection_attempt_id: str
+
+
+@dataclass(frozen=True)
+class StreamInterruptedEvent(Event):
+    last_seq_num: Optional[int]
+    reason: Optional[str]
+    retry_after_ms: Optional[int]
 
 
 @dataclass(frozen=True)

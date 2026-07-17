@@ -98,6 +98,22 @@ Call `send_message` / `sendMessage` when you want the asynchronous `Run` respons
 
 Streams end normally with `processing.finished`. Ignore `system.ping`. Treat `system.stream_interrupted` as a recovery signal, not a failed turn.
 
+For the usual case, prefer the built-in recovery helpers. They reconnect with the most recent event ID and replay persisted events after repeated interruption:
+
+```python
+from genie_api_sdk import AgentMessageEvent
+
+for event in client.stream_message_with_recovery(handle, conversation_id, "Show my open deals"):
+    if isinstance(event, AgentMessageEvent):
+        print(event.message)
+```
+
+```ts
+for await (const event of client.streamMessageWithRecovery(handle, conversationId, "Show my open deals")) {
+  if (isAgentMessageEvent(event)) console.log(event.data.message);
+}
+```
+
 Reconnect from the last successfully persisted event ID:
 
 ```python
@@ -145,3 +161,15 @@ cd typescript && npm run check && npm test
 ```
 
 The test suite must not call the live Workato service. Use `httpx.MockTransport` in Python and injected `fetch` implementations in TypeScript.
+
+## Async Python
+
+`AsyncGenieClient` mirrors the synchronous Python API and owns an `httpx.AsyncClient` by default:
+
+```python
+from genie_api_sdk import AsyncGenieClient
+
+async with AsyncGenieClient(api_key="...", idp_user_id="user-123") as client:
+    async for event in client.stream_message_with_recovery("my-genie", "conversation-id", "Hello"):
+        process(event)
+```
