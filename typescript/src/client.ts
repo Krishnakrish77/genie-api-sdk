@@ -96,7 +96,7 @@ export class GenieClient {
   async listEvents(genieHandle: string, options: { sinceCreatedAt?: string; conversationId?: string; limit?: number } = {}): Promise<Page<Event>> {
     const params = { since_created_at: options.sinceCreatedAt, conversation_id: options.conversationId, limit: options.limit };
     const data = await this.json<{ events: Record<string, unknown>[]; next_since_created_at?: string }>("GET", this.path(genieHandle, "/conversations/events"), params);
-    return { items: data.events.map(toEvent), totalCount: data.events.length, nextSinceCreatedAt: data.next_since_created_at };
+    return { items: data.events.map((event) => toEvent(event)), totalCount: data.events.length, nextSinceCreatedAt: data.next_since_created_at };
   }
 
   async resolveSkillApproval(genieHandle: string, conversationId: string, callId: string, resolution: SkillResolution, rejectionReason?: string): Promise<void> {

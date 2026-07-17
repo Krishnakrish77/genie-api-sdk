@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Unofficial TypeScript SDK for the Genie Headless API",
   "license": "MIT",
+  "homepage": "https://github.com/Krishnakrish77/genie-api-sdk#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/Krishnakrish77/genie-api-sdk.git", "directory": "typescript" },
+  "bugs": { "url": "https://github.com/Krishnakrish77/genie-api-sdk/issues" },
+  "keywords": ["agentic", "genie", "headless-api", "sdk"],
+  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,8 +16,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm run check && npm test"
   },
   "engines": { "node": ">=18" },
+  "packageManager": "npm@10.9.2",
+  "publishConfig": { "access": "public", "provenance": true },
   "devDependencies": { "typescript": "^5.5.4" }
 }
