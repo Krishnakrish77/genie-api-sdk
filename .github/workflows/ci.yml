@@ -9,8 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect SDK changes
+    runs-on: ubuntu-latest
+    outputs:
+      sdk: ${{ steps.filter.outputs.sdk }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            sdk:
+              - "python/**"
+              - "typescript/**"
+
   python:
     name: Python 3.14
+    needs: changes
+    if: needs.changes.outputs.sdk == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,6 +48,8 @@ jobs:
 
   typescript:
     name: TypeScript / Node 26
+    needs: changes
+    if: needs.changes.outputs.sdk == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
