@@ -35,8 +35,15 @@ class GenieClient:
     def _headers(self) -> Mapping[str, str]:
         return {"Accept": "application/json", **self._auth.headers()}
 
+    def _safe_get(self, path: str, *, params: Optional[Mapping[str, object]] = None) -> httpx.Response:
+        response = self._client.get(path, params=params, headers=self._headers())
+        if response.status_code == 401 and hasattr(self._auth, "force_refresh"):
+            self._auth.force_refresh()  # type: ignore[attr-defined]
+            response = self._client.get(path, params=params, headers=self._headers())
+        return response.raise_for_status()
+
     def list_conversations(self, genie_handle: str, *, limit: Optional[int] = None, cursor: Optional[str] = None) -> Page[Conversation]:
-        data = self._client.get(self._path(genie_handle, "/conversations"), params={"limit": limit, "cursor": cursor}, headers=self._headers()).raise_for_status().json()
+        data = self._safe_get(self._path(genie_handle, "/conversations"), params={"limit": limit, "cursor": cursor}).json()
         return Page([Conversation.from_dict(item) for item in data["list"]], data["total_count"], data.get("cursor"))
 
     def create_conversation(self, genie_handle: str) -> Conversation:
@@ -44,11 +51,11 @@ class GenieClient:
         return Conversation.from_dict(data)
 
     def get_conversation(self, genie_handle: str, conversation_id: str) -> Conversation:
-        data = self._client.get(self._path(genie_handle, f"/conversations/{conversation_id}"), headers=self._headers()).raise_for_status().json()
+        data = self._safe_get(self._path(genie_handle, f"/conversations/{conversation_id}")).json()
         return Conversation.from_dict(data)
 
     def list_messages(self, genie_handle: str, conversation_id: str, *, limit: Optional[int] = None, cursor: Optional[str] = None) -> Page[Message]:
-        data = self._client.get(self._path(genie_handle, f"/conversations/{conversation_id}/messages"), params={"limit": limit, "cursor": cursor}, headers=self._headers()).raise_for_status().json()
+        data = self._safe_get(self._path(genie_handle, f"/conversations/{conversation_id}/messages"), params={"limit": limit, "cursor": cursor}).json()
         return Page([Message.from_dict(item) for item in data["messages"]], data["total_count"], data.get("cursor"))
 
     def send_message(self, genie_handle: str, conversation_id: str, message: str, *, file_id: Optional[str] = None) -> Run:
@@ -116,7 +123,7 @@ class GenieClient:
             since_created_at = page.next_since_created_at
 
     def list_events(self, genie_handle: str, *, since_created_at: Optional[str] = None, conversation_id: Optional[str] = None, limit: Optional[int] = None) -> Page[Event]:
-        data = self._client.get(self._path(genie_handle, "/conversations/events"), params={"since_created_at": since_created_at, "conversation_id": conversation_id, "limit": limit}, headers=self._headers()).raise_for_status().json()
+        data = self._safe_get(self._path(genie_handle, "/conversations/events"), params={"since_created_at": since_created_at, "conversation_id": conversation_id, "limit": limit}).json()
         return Page([Event.from_dict(item) for item in data["events"]], len(data["events"]), next_since_created_at=data.get("next_since_created_at"))
 
     def resolve_skill_approval(self, genie_handle: str, conversation_id: str, call_id: str, resolution: str, *, rejection_reason: Optional[str] = None) -> None:

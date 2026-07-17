@@ -65,7 +65,9 @@ const oauthClient = new GenieClient({ auth: new OAuthAuth(() => currentAccessTok
 
 Use `base_url` (Python) or `baseUrl` (TypeScript) only when targeting a different Workato data center or a test server.
 
-For rotating OAuth refresh tokens, use `RefreshableOAuthAuth`. Your application supplies load, refresh, and save callbacks; the SDK serializes refreshes but never stores credentials itself. The token provider is consulted for every request and stream reconnection.
+For rotating OAuth refresh tokens, use `RefreshableOAuthAuth` (or `AsyncRefreshableOAuthAuth`). Your application supplies `load_tokens` and a single `refresh_and_persist` transaction; the latter must use a distributed lock or compare-and-swap when multiple processes share token storage. It must return the persisted winning token set. The SDK serializes refreshes within one client instance but never stores credentials itself. The token provider is consulted for every request and stream reconnection.
+
+When a safe read receives an authentication failure, a refreshable strategy is forced to refresh once and the read is retried once. Message submission, uploads, approvals, and other writes are never retried automatically.
 
 ## Core workflow
 

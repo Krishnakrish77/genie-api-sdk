@@ -41,8 +41,17 @@ class AsyncGenieClient:
             headers = await headers
         return {"Accept": "application/json", **headers}
 
+    async def _safe_get(self, path: str, *, params: Optional[Mapping[str, object]] = None) -> httpx.Response:
+        response = await self._client.get(path, params=params, headers=await self._headers())
+        if response.status_code == 401 and hasattr(self._auth, "force_refresh"):
+            refreshed = self._auth.force_refresh()  # type: ignore[attr-defined]
+            if inspect.isawaitable(refreshed):
+                await refreshed
+            response = await self._client.get(path, params=params, headers=await self._headers())
+        return response.raise_for_status()
+
     async def list_conversations(self, genie_handle: str, *, limit: Optional[int] = None, cursor: Optional[str] = None) -> Page[Conversation]:
-        data = (await self._client.get(self._path(genie_handle, "/conversations"), params={"limit": limit, "cursor": cursor}, headers=await self._headers())).raise_for_status().json()
+        data = (await self._safe_get(self._path(genie_handle, "/conversations"), params={"limit": limit, "cursor": cursor})).json()
         return Page([Conversation.from_dict(item) for item in data["list"]], data["total_count"], data.get("cursor"))
 
     async def create_conversation(self, genie_handle: str) -> Conversation:
@@ -50,11 +59,11 @@ class AsyncGenieClient:
         return Conversation.from_dict(data)
 
     async def get_conversation(self, genie_handle: str, conversation_id: str) -> Conversation:
-        data = (await self._client.get(self._path(genie_handle, f"/conversations/{conversation_id}"), headers=await self._headers())).raise_for_status().json()
+        data = (await self._safe_get(self._path(genie_handle, f"/conversations/{conversation_id}")).json())
         return Conversation.from_dict(data)
 
     async def list_messages(self, genie_handle: str, conversation_id: str, *, limit: Optional[int] = None, cursor: Optional[str] = None) -> Page[Message]:
-        data = (await self._client.get(self._path(genie_handle, f"/conversations/{conversation_id}/messages"), params={"limit": limit, "cursor": cursor}, headers=await self._headers())).raise_for_status().json()
+        data = (await self._safe_get(self._path(genie_handle, f"/conversations/{conversation_id}/messages"), params={"limit": limit, "cursor": cursor})).json()
         return Page([Message.from_dict(item) for item in data["messages"]], data["total_count"], data.get("cursor"))
 
     async def send_message(self, genie_handle: str, conversation_id: str, message: str, *, file_id: Optional[str] = None) -> Run:
@@ -69,7 +78,7 @@ class AsyncGenieClient:
         return self._stream("GET", self._path(genie_handle, f"/conversations/{conversation_id}/genie-runs/{genie_run_id}"), headers=headers)
 
     async def list_events(self, genie_handle: str, *, since_created_at: Optional[str] = None, conversation_id: Optional[str] = None, limit: Optional[int] = None) -> Page[Event]:
-        data = (await self._client.get(self._path(genie_handle, "/conversations/events"), params={"since_created_at": since_created_at, "conversation_id": conversation_id, "limit": limit}, headers=await self._headers())).raise_for_status().json()
+        data = (await self._safe_get(self._path(genie_handle, "/conversations/events"), params={"since_created_at": since_created_at, "conversation_id": conversation_id, "limit": limit})).json()
         return Page([Event.from_dict(item) for item in data["events"]], len(data["events"]), next_since_created_at=data.get("next_since_created_at"))
 
     async def resolve_skill_approval(self, genie_handle: str, conversation_id: str, call_id: str, resolution: str, *, rejection_reason: Optional[str] = None) -> None:

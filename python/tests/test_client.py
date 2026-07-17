@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from genie_api_sdk import (AgentMessageEvent, ApiKeyAuth, AsyncGenieClient,
-                           GenieClient, OAuthTokens, RefreshableOAuthAuth)
+                           AsyncOAuthAuth, GenieClient, OAuthTokens,
+                           RefreshableOAuthAuth)
 
 
 def test_shared_http_client_keeps_each_sdk_clients_credentials_isolated():
@@ -83,15 +84,63 @@ def test_refreshable_oauth_auth_refreshes_once_and_persists_rotating_tokens():
     tokens = OAuthTokens("expired", "refresh-1", datetime.now(timezone.utc) - timedelta(seconds=1))
     refreshes = []
 
-    def refresh(refresh_token):
-        refreshes.append(refresh_token)
-        return OAuthTokens("fresh", "refresh-2", datetime.now(timezone.utc) + timedelta(hours=1))
-
-    def save(updated):
+    def refresh_and_persist(current):
         nonlocal tokens
-        tokens = updated
+        refreshes.append(current.refresh_token)
+        tokens = OAuthTokens("fresh", "refresh-2", datetime.now(timezone.utc) + timedelta(hours=1))
+        return tokens
 
-    auth = RefreshableOAuthAuth(load_tokens=lambda: tokens, refresh_tokens=refresh, save_tokens=save)
+    auth = RefreshableOAuthAuth(load_tokens=lambda: tokens, refresh_and_persist=refresh_and_persist)
     assert auth.headers()["Authorization"] == "Bearer fresh"
     assert auth.headers()["Authorization"] == "Bearer fresh"
     assert refreshes == ["refresh-1"]
+
+
+def test_safe_reads_refresh_once_after_unauthorized_but_messages_do_not_retry():
+    class Auth:
+        token = "old"
+        refreshes = 0
+
+        def headers(self):
+            return {"Authorization": f"Bearer {self.token}"}
+
+        def force_refresh(self):
+            self.token = "new"
+            self.refreshes += 1
+
+    auth = Auth()
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.headers["authorization"] == "Bearer old":
+            return httpx.Response(401)
+        return httpx.Response(200, json={"conversation_id": "conversation"})
+
+    client = GenieClient(auth=auth, http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    assert client.get_conversation("genie", "conversation").conversation_id == "conversation"
+    assert len(requests) == 2 and auth.refreshes == 1
+
+    auth.token = "old"
+    try:
+        client.send_message("genie", "conversation", "hello")
+    except httpx.HTTPStatusError:
+        pass
+    else:
+        raise AssertionError("expected authentication failure")
+    assert len(requests) == 3 and auth.refreshes == 1
+
+
+def test_async_oauth_provider_is_awaited():
+    async def run():
+        async def access_token():
+            return "async-token"
+
+        async def handler(request):
+            assert request.headers["authorization"] == "Bearer async-token"
+            return httpx.Response(200, json={"conversation_id": "conversation"})
+
+        client = AsyncGenieClient(auth=AsyncOAuthAuth(access_token), http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+        return await client.create_conversation("genie")
+
+    assert asyncio.run(run()).conversation_id == "conversation"

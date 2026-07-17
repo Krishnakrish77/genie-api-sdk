@@ -2,6 +2,7 @@ export type MaybePromise<T> = T | Promise<T>;
 
 export interface Auth {
   headers(): MaybePromise<Record<string, string>>;
+  forceRefresh?(): MaybePromise<void>;
 }
 
 export class ApiKeyAuth implements Auth {
@@ -32,8 +33,8 @@ export class RefreshableOAuthAuth implements Auth {
 
   constructor(
     private readonly loadTokens: () => MaybePromise<OAuthTokens>,
-    private readonly refreshTokens: (refreshToken: string) => MaybePromise<OAuthTokens>,
-    private readonly saveTokens: (tokens: OAuthTokens) => MaybePromise<void>,
+    /** Atomically refreshes rotating credentials and persists the winning token set. */
+    private readonly refreshAndPersist: (current: OAuthTokens) => MaybePromise<OAuthTokens>,
     private readonly refreshSkewMs = 60_000
   ) {}
 
@@ -43,16 +44,18 @@ export class RefreshableOAuthAuth implements Auth {
     return { Authorization: `Bearer ${current.accessToken}` };
   }
 
-  private async refresh(tokens: OAuthTokens): Promise<OAuthTokens> {
+  private async refresh(tokens: OAuthTokens, force = false): Promise<OAuthTokens> {
     if (!this.refreshInFlight) {
       this.refreshInFlight = (async () => {
         const latest = await this.loadTokens();
-        if (latest.expiresAt.getTime() > Date.now() + this.refreshSkewMs) return latest;
-        const refreshed = await this.refreshTokens(latest.refreshToken);
-        await this.saveTokens(refreshed);
-        return refreshed;
+        if (!force && latest.expiresAt.getTime() > Date.now() + this.refreshSkewMs) return latest;
+        return this.refreshAndPersist(latest);
       })().finally(() => { this.refreshInFlight = undefined; });
     }
     return this.refreshInFlight;
+  }
+
+  async forceRefresh(): Promise<void> {
+    await this.refresh(await this.loadTokens(), true);
   }
 }
