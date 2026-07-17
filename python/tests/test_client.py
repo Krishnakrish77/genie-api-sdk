@@ -1,4 +1,5 @@
 import asyncio
+import io
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -159,3 +160,96 @@ def test_paths_are_encoded_and_absent_optional_fields_are_omitted():
 
     assert requests[0].url.raw_path == b"/api/v1/genies/genie%2Fname/chat/conversations/conversation%2Fname/messages"
     assert json.loads(requests[0].content) == {"message": "hello", "stream": False}
+
+
+def test_all_rest_operations_serialize_the_documented_paths_and_payloads():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        path = request.url.path
+        if path.endswith("/conversations") and request.method == "GET":
+            return httpx.Response(200, json={"list": [{"conversation_id": "c"}], "total_count": 1, "cursor": "next"})
+        if path.endswith("/conversations"):
+            return httpx.Response(200, json={"conversation_id": "c"})
+        if path.endswith("/messages") and request.method == "GET":
+            return httpx.Response(200, json={"messages": [{"message_id": "m", "source": "user", "content": "hello"}], "total_count": 1})
+        if path.endswith("/events"):
+            return httpx.Response(200, json={"events": [{"type": "agent.message", "event_id": "e", "message": "hello"}], "next_since_created_at": "cursor"})
+        if path.endswith("/link"):
+            return httpx.Response(200, json={"status": "auth_required", "auth_link": {"url": "https://example.test", "expires_at": "now", "connector_name": "Demo"}})
+        if path.endswith("/upload"):
+            assert request.headers["content-type"].startswith("multipart/form-data")
+            return httpx.Response(200, json={"file_id": "f"})
+        if path.endswith("/c"):
+            return httpx.Response(200, json={"conversation_id": "c", "state": "idle"})
+        return httpx.Response(200, json={})
+
+    client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    assert client.list_conversations("genie", limit=1, cursor="before").cursor == "next"
+    assert client.create_conversation("genie").conversation_id == "c"
+    assert client.get_conversation("genie", "c").state == "idle"
+    assert client.list_messages("genie", "c", limit=1).items[0].message_id == "m"
+    assert client.list_events("genie", conversation_id="c", since_created_at="start", limit=1).next_since_created_at == "cursor"
+    client.resolve_skill_approval("genie", "c", "call", "rejected", rejection_reason="no")
+    assert client.get_runtime_connection_link("genie", "attempt")["status"] == "auth_required"
+    client.reject_runtime_connection("genie", "attempt", reason="no")
+    assert client.upload_file("genie", "c", ("note.txt", io.BytesIO(b"hello"), "text/plain")) == "f"
+
+    payloads = {request.url.path: json.loads(request.content) for request in requests if request.headers.get("content-type") == "application/json"}
+    assert payloads[next(path for path in payloads if "/skill_approval/" in path)] == {"resolution": "rejected", "rejection_reason": "no"}
+    assert payloads[next(path for path in payloads if path.endswith("/reject"))] == {"reason": "no"}
+    events_request = next(request for request in requests if request.url.path.endswith("/events"))
+    assert dict(events_request.url.params) == {"since_created_at": "start", "conversation_id": "c", "limit": "1"}
+
+
+def test_stream_honors_server_retry_delay(monkeypatch):
+    pauses = []
+
+    def handler(request):
+        if "/genie-runs/" in request.url.path:
+            return httpx.Response(200, content=b"event: processing.finished\ndata: {\"genie_run_id\":\"run\"}\n\n")
+        return httpx.Response(200, content=b"event: processing.started\nid: started\ndata: {\"genie_run_id\":\"run\"}\n\nevent: system.stream_interrupted\ndata: {\"genie_run_id\":\"run\",\"retry_after_ms\":25}\n\n")
+
+    monkeypatch.setattr("genie_api_sdk.client.time.sleep", pauses.append)
+    client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    list(client.stream_message("genie", "conversation", "hello"))
+    assert pauses == [0.025]
+
+
+def test_async_client_covers_all_rest_operations():
+    async def run():
+        paths = []
+
+        async def handler(request):
+            paths.append((request.method, request.url.path))
+            path = request.url.path
+            if path.endswith("/conversations") and request.method == "GET":
+                return httpx.Response(200, json={"list": [{"conversation_id": "c"}], "total_count": 1})
+            if path.endswith("/conversations"):
+                return httpx.Response(200, json={"conversation_id": "c"})
+            if path.endswith("/messages") and request.method == "GET":
+                return httpx.Response(200, json={"messages": [{"message_id": "m", "source": "user", "content": "hello"}], "total_count": 1})
+            if path.endswith("/events"):
+                return httpx.Response(200, json={"events": []})
+            if path.endswith("/link"):
+                return httpx.Response(200, json={"status": "authorized"})
+            if path.endswith("/upload"):
+                return httpx.Response(200, json={"file_id": "f"})
+            if path.endswith("/c"):
+                return httpx.Response(200, json={"conversation_id": "c"})
+            return httpx.Response(200, json={})
+
+        client = AsyncGenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+        await client.list_conversations("genie")
+        await client.create_conversation("genie")
+        await client.get_conversation("genie", "c")
+        await client.list_messages("genie", "c")
+        await client.list_events("genie")
+        await client.resolve_skill_approval("genie", "c", "call", "approved")
+        await client.get_runtime_connection_link("genie", "attempt")
+        await client.reject_runtime_connection("genie", "attempt")
+        assert await client.upload_file("genie", "c", ("note.txt", io.BytesIO(b"hello"), "text/plain")) == "f"
+        assert {path for _, path in paths} >= {"/api/v1/genies/genie/chat/conversations", "/api/v1/genies/genie/chat/conversations/c", "/api/v1/genies/genie/chat/conversations/c/messages", "/api/v1/genies/genie/chat/conversations/events", "/api/v1/genies/genie/chat/conversations/c/skill_approval/call", "/api/v1/genies/genie/chat/runtime_connection/attempt/link", "/api/v1/genies/genie/chat/runtime_connection/attempt/reject", "/api/v1/genies/genie/chat/conversations/c/upload"}
+
+    asyncio.run(run())

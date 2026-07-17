@@ -13,4 +13,8 @@ This repository contains independent Python and TypeScript packages. They provid
 
 See the [developer guide](docs/developer-guide.md) for setup, authentication, core workflows, event handling, and local testing.
 
+## Beta releases
+
+Python beta releases use PEP 440 versions such as `0.1.0b1`; npm uses the equivalent SemVer version such as `0.1.0-beta.1`. Install npm beta releases explicitly with the `beta` dist-tag.
+
 > The Workato Headless API is currently in private beta. You need a configured custom chat interface and an attached Genie client before using either SDK.

@@ -105,3 +105,55 @@ test("reconnects after an interrupted stream", async () => {
   assert.equal(events[2].data.message, "Recovered");
   assert.equal(requests.length, 2);
 });
+
+test("covers conversation, event, approval, runtime connection, and upload operations", async () => {
+  const requests = [];
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async (url, init) => {
+      const requestUrl = new URL(String(url));
+      requests.push({ path: requestUrl.pathname, query: requestUrl.searchParams, init });
+      if (requestUrl.pathname.endsWith("/conversations") && init.method === "GET") return Response.json({ list: [{ conversation_id: "c" }], total_count: 1, cursor: "next" });
+      if (requestUrl.pathname.endsWith("/conversations")) return Response.json({ conversation_id: "c" });
+      if (requestUrl.pathname.endsWith("/messages") && init.method === "GET") return Response.json({ messages: [{ message_id: "m", source: "user", content: "hi" }], total_count: 1 });
+      if (requestUrl.pathname.endsWith("/events")) return Response.json({ events: [{ type: "agent.message", event_id: "e", message: "hi" }], next_since_created_at: "next-event" });
+      if (requestUrl.pathname.endsWith("/link")) return Response.json({ status: "authorized" });
+      if (requestUrl.pathname.endsWith("/upload")) { assert.ok(init.body instanceof FormData); return Response.json({ file_id: "f" }); }
+      if (requestUrl.pathname.endsWith("/c")) return Response.json({ conversation_id: "c", state: "idle" });
+      return Response.json({});
+    }
+  });
+
+  assert.equal((await client.listConversations("genie", { limit: 1, cursor: "before" })).cursor, "next");
+  assert.equal((await client.createConversation("genie")).conversation_id, "c");
+  assert.equal((await client.getConversation("genie", "c")).state, "idle");
+  assert.equal((await client.listMessages("genie", "c", { limit: 1 })).items[0].message_id, "m");
+  assert.equal((await client.listEvents("genie", { conversationId: "c", sinceCreatedAt: "start", limit: 1 })).nextSinceCreatedAt, "next-event");
+  await client.resolveSkillApproval("genie", "c", "call", "rejected", "no");
+  assert.equal((await client.getRuntimeConnectionLink("genie", "attempt")).status, "authorized");
+  await client.rejectRuntimeConnection("genie", "attempt", "no");
+  assert.equal(await client.uploadFile("genie", "c", new Blob(["hello"])), "f");
+
+  const approval = requests.find((request) => request.path.includes("/skill_approval/"));
+  assert.deepEqual(JSON.parse(approval.init.body), { resolution: "rejected", rejection_reason: "no" });
+  const events = requests.find((request) => request.path.endsWith("/events"));
+  assert.equal(events.query.get("conversation_id"), "c");
+  assert.equal(events.query.get("since_created_at"), "start");
+});
+
+test("honors stream retry delay and supports aborting the wait", async () => {
+  const encoder = new TextEncoder();
+  let calls = 0;
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => {
+      calls += 1;
+      const payload = calls === 1
+        ? "event: processing.started\ndata: {\"genie_run_id\":\"run\"}\n\nevent: system.stream_interrupted\ndata: {\"genie_run_id\":\"run\",\"retry_after_ms\":1}\n\n"
+        : "event: processing.finished\ndata: {\"genie_run_id\":\"run\"}\n\n";
+      return new Response(new ReadableStream({ start(controller) { controller.enqueue(encoder.encode(payload)); controller.close(); } }));
+    }
+  });
+  for await (const _event of client.streamMessage("genie", "conversation", "hello")) {}
+  assert.equal(calls, 2);
+});
