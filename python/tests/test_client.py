@@ -1,6 +1,6 @@
 import httpx
 
-from workato_genie import GenieClient
+from genie_api_sdk import GenieClient
 
 
 def test_shared_http_client_keeps_each_sdk_clients_credentials_isolated():

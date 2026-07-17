@@ -2,10 +2,12 @@
 
 This repository supplies two independent, platform-neutral clients for the Workato Genie Headless API:
 
-- Python: `workato-genie`
-- TypeScript: `@workato/genie-api`
+- Python: `genie-api-sdk` (imported as `genie_api_sdk`)
+- TypeScript: `genie-api-sdk`
 
 Use them in a server, web application backend, CLI, or channel adapter. The SDKs do not include Telegram, Slack, or any UI dependency.
+
+These are unofficial, community-maintained SDKs and are not affiliated with or endorsed by Workato.
 
 ## Prerequisites
 
@@ -66,7 +68,7 @@ Create a conversation once, persist its ID against your application's user/chann
 ### Python
 
 ```python
-from workato_genie import GenieClient
+from genie_api_sdk import GenieClient
 
 handle = "my-genie"
 with GenieClient(api_key="...", idp_user_id="user-123") as client:
@@ -79,7 +81,7 @@ with GenieClient(api_key="...", idp_user_id="user-123") as client:
 ### TypeScript
 
 ```ts
-import { GenieClient } from "@workato/genie-api";
+import { GenieClient } from "genie-api-sdk";
 
 const handle = "my-genie";
 const client = new GenieClient({ apiKey: "...", idpUserId: "user-123" });

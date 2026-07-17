@@ -1,4 +1,4 @@
-"""Synchronous client for the Workato Genie Headless API."""
+"""Synchronous client for the Genie Headless API."""
 
 import json
 from typing import BinaryIO, Iterator, Mapping, Optional, Tuple, Union

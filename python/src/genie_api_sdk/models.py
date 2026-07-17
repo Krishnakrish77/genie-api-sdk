@@ -1,4 +1,4 @@
-"""Public response models."""
+"""Public response models for the Genie Headless API."""
 
 from dataclasses import dataclass
 from typing import Any, Dict, Generic, List, Mapping, Optional, TypeVar

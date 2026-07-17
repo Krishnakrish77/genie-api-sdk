@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "workato-genie"
+name = "genie-api-sdk"
 version = "0.1.0"
-description = "Python SDK for the Workato Genie Headless API"
+description = "Unofficial Python SDK for the Genie Headless API"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -15,4 +15,4 @@ dependencies = ["httpx>=0.27,<1"]
 dev = ["pytest>=8", "respx>=0.21"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/workato_genie"]
+packages = ["src/genie_api_sdk"]

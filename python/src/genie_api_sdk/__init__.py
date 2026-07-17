@@ -1,4 +1,4 @@
-"""Python SDK for the Workato Genie Headless API."""
+"""Unofficial Python SDK for the Genie Headless API."""
 
 from .client import GenieClient
 from .models import Conversation, Event, Message, Page, Run

@@ -4,8 +4,8 @@
 
 This repository contains two separate SDKs for the Workato Genie Headless API:
 
-- `python/`: synchronous Python package, `workato_genie`
-- `typescript/`: Node.js 18+ ESM package, `@workato/genie-api`
+- `python/`: synchronous Python package, `genie_api_sdk` (published as `genie-api-sdk`)
+- `typescript/`: Node.js 18+ ESM package, `genie-api-sdk`
 
 Keep the packages platform-neutral. Do not add Telegram, Slack, web-framework, or UI dependencies to either SDK. Put any channel integration in a separate application or example package.
 

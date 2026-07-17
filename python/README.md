@@ -1,11 +1,11 @@
-# workato-genie
+# genie-api-sdk
 
-Python client for the Workato Genie Headless API.
+Unofficial Python client for the Genie Headless API. It is community-maintained and not affiliated with or endorsed by Workato.
 
 For installation, supported workflows, and testing, see the repository [developer guide](../docs/developer-guide.md).
 
 ```python
-from workato_genie import GenieClient
+from genie_api_sdk import GenieClient
 
 client = GenieClient(api_key="…", idp_user_id="user-123")
 conversation = client.create_conversation("my-genie")

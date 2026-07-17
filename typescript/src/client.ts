@@ -4,7 +4,7 @@ const DEFAULT_BASE_URL = "https://genie-api.workato.com";
 
 export class GenieApiError extends Error {
   constructor(public readonly status: number, public readonly body: unknown) {
-    super(`Workato Genie API request failed with status ${status}`);
+    super(`Genie API request failed with status ${status}`);
     this.name = "GenieApiError";
   }
 }

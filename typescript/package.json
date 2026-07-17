@@ -1,7 +1,7 @@
 {
-  "name": "@workato/genie-api",
+  "name": "genie-api-sdk",
   "version": "0.1.0",
-  "description": "TypeScript SDK for the Workato Genie Headless API",
+  "description": "Unofficial TypeScript SDK for the Genie Headless API",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
