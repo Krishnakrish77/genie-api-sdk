@@ -1,4 +1,5 @@
 import type { ClientOptions, Conversation, Event, EventData, Message, Page, Run, RuntimeConnectionLink, SkillResolution } from "./types.js";
+import type { Auth } from "./auth.js";
 
 const DEFAULT_BASE_URL = "https://genie-api.workato.com";
 
@@ -12,20 +13,12 @@ export class GenieApiError extends Error {
 export class GenieClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof globalThis.fetch;
-  private readonly headers: HeadersInit;
+  private readonly auth: Auth;
 
   constructor(options: ClientOptions) {
-    const hasAccessToken = Boolean(options.accessToken);
-    const hasApiKey = Boolean(options.apiKey);
-    if (hasAccessToken === hasApiKey) throw new Error("Provide exactly one of accessToken or apiKey");
-    if (hasApiKey && !options.idpUserId) throw new Error("idpUserId is required when using apiKey");
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
     this.fetchImpl = options.fetch ?? globalThis.fetch;
-    this.headers = {
-      Authorization: `Bearer ${options.accessToken ?? options.apiKey}`,
-      Accept: "application/json",
-      ...(options.idpUserId ? { "X-IDP-User-Id": options.idpUserId } : {})
-    };
+    this.auth = options.auth;
   }
 
   async listConversations(genieHandle: string, options: { limit?: number; cursor?: string } = {}): Promise<Page<Conversation>> {
@@ -129,7 +122,7 @@ export class GenieClient {
     const isForm = body instanceof FormData;
     const response = await this.fetchImpl(url, {
       method,
-      headers: { ...this.headers, ...(isForm ? {} : body === undefined ? {} : { "Content-Type": "application/json" }), ...extraHeaders },
+      headers: { Accept: "application/json", ...(await this.auth.headers()), ...(isForm ? {} : body === undefined ? {} : { "Content-Type": "application/json" }), ...extraHeaders },
       body: body === undefined ? undefined : isForm ? body : JSON.stringify(body)
     });
     if (!response.ok) {

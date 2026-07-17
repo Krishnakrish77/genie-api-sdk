@@ -49,17 +49,23 @@ npm run build
 API-key authentication is appropriate for backend integrations. It requires both the static API key and the Workato IdP user ID. OAuth applications provide an end user's Workato access token instead.
 
 ```python
-client = GenieClient(api_key="...", idp_user_id="user-123")
+from genie_api_sdk import ApiKeyAuth, GenieClient, OAuthAuth
+
+client = GenieClient(auth=ApiKeyAuth("...", "user-123"))
 # or
-client = GenieClient(access_token="oauth-access-token")
+client = GenieClient(auth=OAuthAuth(lambda: current_access_token()))
 ```
 
 ```ts
-const apiKeyClient = new GenieClient({ apiKey: "...", idpUserId: "user-123" });
-const oauthClient = new GenieClient({ accessToken: "oauth-access-token" });
+import { ApiKeyAuth, GenieClient, OAuthAuth } from "genie-api-sdk";
+
+const apiKeyClient = new GenieClient({ auth: new ApiKeyAuth("...", "user-123") });
+const oauthClient = new GenieClient({ auth: new OAuthAuth(() => currentAccessToken()) });
 ```
 
 Use `base_url` (Python) or `baseUrl` (TypeScript) only when targeting a different Workato data center or a test server.
+
+For rotating OAuth refresh tokens, use `RefreshableOAuthAuth`. Your application supplies load, refresh, and save callbacks; the SDK serializes refreshes but never stores credentials itself. The token provider is consulted for every request and stream reconnection.
 
 ## Core workflow
 
@@ -68,10 +74,10 @@ Create a conversation once, persist its ID against your application's user/chann
 ### Python
 
 ```python
-from genie_api_sdk import GenieClient
+from genie_api_sdk import ApiKeyAuth, GenieClient
 
 handle = "my-genie"
-with GenieClient(api_key="...", idp_user_id="user-123") as client:
+with GenieClient(auth=ApiKeyAuth("...", "user-123")) as client:
     conversation = client.create_conversation(handle)
     for event in client.stream_message(handle, conversation.conversation_id, "Show my open deals"):
         if event.type == "agent.message":
@@ -81,10 +87,10 @@ with GenieClient(api_key="...", idp_user_id="user-123") as client:
 ### TypeScript
 
 ```ts
-import { GenieClient } from "genie-api-sdk";
+import { ApiKeyAuth, GenieClient } from "genie-api-sdk";
 
 const handle = "my-genie";
-const client = new GenieClient({ apiKey: "...", idpUserId: "user-123" });
+const client = new GenieClient({ auth: new ApiKeyAuth("...", "user-123") });
 const conversation = await client.createConversation(handle);
 
 for await (const event of client.streamMessage(handle, conversation.conversation_id, "Show my open deals")) {
@@ -154,9 +160,9 @@ The test suite must not call the live Workato service. Use `httpx.MockTransport`
 `AsyncGenieClient` mirrors the synchronous Python API and owns an `httpx.AsyncClient` by default:
 
 ```python
-from genie_api_sdk import AsyncGenieClient
+from genie_api_sdk import ApiKeyAuth, AsyncGenieClient
 
-async with AsyncGenieClient(api_key="...", idp_user_id="user-123") as client:
+async with AsyncGenieClient(auth=ApiKeyAuth("...", "user-123")) as client:
     async for event in client.stream_message("my-genie", "conversation-id", "Hello"):
         process(event)
 ```
