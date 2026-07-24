@@ -22,7 +22,7 @@ jobs:
         run: test "$GITHUB_REF" = "refs/heads/main"
       - uses: actions/setup-python@v5
         with: { python-version: "3.14" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: npm
@@ -72,7 +72,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 26, registry-url: "https://registry.npmjs.org" }
       - uses: actions/download-artifact@v4
         with: { name: npm-dist, path: dist }
