@@ -160,6 +160,19 @@ cd typescript && npm run check && npm test
 
 The test suite must not call the live Workato service. Use `httpx.MockTransport` in Python and injected `fetch` implementations in TypeScript.
 
+## Example application and real API smoke test
+
+The [Python CLI example](../examples/python-cli/README.md) is a small,
+server-side API-key integration that creates or resumes a conversation and
+renders its response stream. It deliberately leaves skill confirmation and
+runtime-connection authorization to the application instead of automatically
+accepting either.
+
+`examples/python-cli/e2e_smoke.py` is deliberately excluded from CI. It only
+contacts a workspace when `GENIE_E2E=1` and the `WORKATO_API_KEY`,
+`WORKATO_IDP_USER_ID`, and `WORKATO_GENIE_HANDLE` environment variables are
+set. Run it only against a non-production workspace.
+
 ## Async Python
 
 `AsyncGenieClient` mirrors the synchronous Python API and owns an `httpx.AsyncClient` by default:

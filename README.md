@@ -11,6 +11,11 @@ This repository contains independent Python and TypeScript packages. They provid
 - [`python/`](python/README.md) — `genie-api-sdk` / `genie_api_sdk`
 - [`typescript/`](typescript/README.md) — `genie-api-sdk`
 
+## Example application
+
+[`examples/python-cli/`](examples/python-cli/README.md) is a minimal terminal
+chat client using the Python SDK, with an explicitly opt-in real API smoke test.
+
 See the [developer guide](docs/developer-guide.md) for setup, authentication, core workflows, event handling, and local testing.
 
 ## Beta releases
