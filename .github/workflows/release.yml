@@ -42,11 +42,11 @@ jobs:
       - run: python -m build python && python -m twine check python/dist/*
       - run: npm ci && npm run check && npm test && npm pack
         working-directory: typescript
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: python-dist
           path: python/dist/*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-dist
           path: typescript/*.tgz
