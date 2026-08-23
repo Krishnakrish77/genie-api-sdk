@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Genie workspace</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Genie workspace home"><span class="brand-mark">✦</span><span>Genie</span></a>
+        <div class="topbar-actions"><span id="connection" class="connection">Ready</span><button id="new-chat" class="quiet-button">New chat</button></div>
+      </header>
+      <section class="hero" aria-labelledby="welcome-title">
+        <p class="eyebrow">YOUR AI WORKSPACE</p>
+        <h1 id="welcome-title">What can we make easier today?</h1>
+        <p>Ask a question, explore an idea, or hand off a task. Your conversation stays right here.</p>
+      </section>
+      <section id="thread" class="thread" aria-live="polite" aria-label="Conversation">
+        <div class="empty-state" id="empty-state"><div class="sparkle">✦</div><h2>Start a focused conversation</h2><p>Genie will keep the context while you work together.</p></div>
+      </section>
+      <form id="composer" class="composer">
+        <label class="sr-only" for="message">Message Genie</label>
+        <textarea id="message" rows="1" maxlength="12288" placeholder="Message Genie…" required></textarea>
+        <button id="send" class="send-button" type="submit" aria-label="Send message">↑</button>
+        <p class="composer-note">Genie can make mistakes. Review important actions before approving them.</p>
+      </form>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

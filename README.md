@@ -13,8 +13,9 @@ This repository contains independent Python and TypeScript packages. They provid
 
 ## Example application
 
-[`examples/python-cli/`](examples/python-cli/README.md) is a minimal terminal
-chat client using the Python SDK, with an explicitly opt-in real API smoke test.
+[`examples/web-chat/`](examples/web-chat/README.md) is a polished browser chat
+experience built on the TypeScript SDK. API credentials remain on the server;
+the browser receives only streamed conversation events.
 
 See the [developer guide](docs/developer-guide.md) for setup, authentication, core workflows, event handling, and local testing.
 

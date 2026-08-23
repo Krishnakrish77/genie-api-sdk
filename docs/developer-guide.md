@@ -162,16 +162,16 @@ The test suite must not call the live Workato service. Use `httpx.MockTransport`
 
 ## Example application and real API smoke test
 
-The [Python CLI example](../examples/python-cli/README.md) is a small,
-server-side API-key integration that creates or resumes a conversation and
-renders its response stream. It deliberately leaves skill confirmation and
-runtime-connection authorization to the application instead of automatically
-accepting either.
+The [web chat example](../examples/web-chat/README.md) is a responsive,
+end-user-facing interface built on the TypeScript SDK. Its Node.js server holds
+the API key and streams SDK events to the browser. It makes skill confirmation
+and runtime-connection authorization explicit user actions instead of
+automatically accepting either.
 
-`examples/python-cli/e2e_smoke.py` is deliberately excluded from CI. It only
-contacts a workspace when `GENIE_E2E=1` and the `WORKATO_API_KEY`,
-`WORKATO_IDP_USER_ID`, and `WORKATO_GENIE_HANDLE` environment variables are
-set. Run it only against a non-production workspace.
+`examples/web-chat/e2e-smoke.mjs` is deliberately excluded from CI. It starts
+the sample server and only contacts a workspace when `GENIE_E2E=1` and the
+`WORKATO_API_KEY`, `WORKATO_IDP_USER_ID`, and `WORKATO_GENIE_HANDLE`
+environment variables are set. Run it only against a non-production workspace.
 
 ## Async Python
 

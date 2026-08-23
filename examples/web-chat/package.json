@@ -1,0 +1,12 @@
+{
+  "name": "genie-web-chat-example",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "npm run build --prefix ../../typescript && node server.mjs",
+    "test": "npm run build --prefix ../../typescript && node --test test/*.test.mjs",
+    "e2e": "npm run build --prefix ../../typescript && node e2e-smoke.mjs"
+  },
+  "engines": { "node": ">=18" }
+}

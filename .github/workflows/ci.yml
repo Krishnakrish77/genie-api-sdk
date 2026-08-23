@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sdk: ${{ steps.filter.outputs.sdk }}
+      web_example: ${{ steps.filter.outputs.web_example }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -23,6 +24,8 @@ jobs:
             sdk:
               - "python/**"
               - "typescript/**"
+            web_example:
+              - "examples/web-chat/**"
 
   python:
     name: Python 3.14
@@ -65,3 +68,22 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm pack --dry-run
+
+  web-example:
+    name: Web example
+    needs: changes
+    if: needs.changes.outputs.web_example == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/web-chat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - run: npm ci
+        working-directory: typescript
+      - run: npm test
