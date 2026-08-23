@@ -15,7 +15,7 @@ jobs:
     outputs:
       sdk: ${{ steps.filter.outputs.sdk }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -33,7 +33,7 @@ jobs:
       run:
         working-directory: python
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
@@ -55,7 +55,7 @@ jobs:
       run:
         working-directory: typescript
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 26
