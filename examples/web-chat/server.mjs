@@ -179,6 +179,17 @@ export function createApp(environment = loadEnvironmentFile(), { oauthPkce } = {
         return response.end();
       }
 
+      const runRoute = url.pathname.match(/^\/api\/conversations\/([^/]+)\/genie-runs\/([^/]+)$/);
+      if (request.method === "GET" && runRoute) {
+        response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" });
+        try {
+          for await (const event of client.streamRun(config.genieHandle, decodeURIComponent(runRoute[1]), decodeURIComponent(runRoute[2]), { lastEventId: url.searchParams.get("lastEventId") ?? undefined })) streamEvent(response, event);
+        } catch (error) {
+          streamEvent(response, { type: "error", data: { message: "The resumed response stream failed. Please try again." }, status: statusFor(error) });
+        }
+        return response.end();
+      }
+
       if (request.method === "POST" && url.pathname === "/api/skill-approvals") {
         const { conversationId, callId, resolution, rejectionReason } = await readJson(request);
         await client.resolveSkillApproval(config.genieHandle, conversationId, callId, resolution, rejectionReason);

@@ -341,6 +341,20 @@ def test_stream_honors_server_retry_delay(monkeypatch):
     assert pauses == [0.025]
 
 
+def test_stream_run_attaches_to_a_paused_run_from_its_last_event():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, content=b"event: agent.message\nid: completed\ndata: {\"genie_run_id\":\"run\",\"message\":\"Delivered\"}\n\n")
+
+    client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    events = list(client.stream_run("genie", "conversation", "run", last_event_id="approval"))
+    assert requests[0].url.path.endswith("/conversations/conversation/genie-runs/run")
+    assert requests[0].headers["last-event-id"] == "approval"
+    assert events[0].data["message"] == "Delivered"
+
+
 def test_async_client_covers_all_rest_operations():
     async def run():
         requests = []

@@ -164,6 +164,44 @@ class AsyncGenieClient:
                 yield event
             return
 
+    async def stream_run(self, genie_handle: str, conversation_id: str, genie_run_id: str, *, last_event_id: Optional[str] = None, max_reconnects: int = 3) -> AsyncIterator[Event]:
+        """Attach to an existing run, for example after resolving a paused approval."""
+        if max_reconnects < 0:
+            raise ValueError("max_reconnects must be non-negative")
+        stream = self._reconnect(genie_handle, conversation_id, genie_run_id, last_event_id=last_event_id)
+        current_last_event_id = last_event_id
+        last_created_at: Optional[str] = None
+        seen_ids: Set[str] = {last_event_id} if last_event_id else set()
+        reconnects = 0
+        retry_after_ms = 0
+        while True:
+            interrupted = False
+            try:
+                async for event in stream:
+                    if event.event_id:
+                        seen_ids.add(event.event_id)
+                        current_last_event_id = event.event_id
+                    if event.created_at:
+                        last_created_at = event.created_at
+                    yield event
+                    if event.type == "system.stream_interrupted":
+                        retry_after_ms = max(0, int(event.data.get("retry_after_ms") or 0))
+                        interrupted = True
+                        break
+            except httpx.TransportError:
+                interrupted = True
+            if not interrupted:
+                return
+            if reconnects < max_reconnects:
+                reconnects += 1
+                if retry_after_ms:
+                    await asyncio.sleep(retry_after_ms / 1000)
+                stream = self._reconnect(genie_handle, conversation_id, genie_run_id, last_event_id=current_last_event_id)
+                continue
+            async for event in self._replay_events(genie_handle, conversation_id, last_created_at, seen_ids):
+                yield event
+            return
+
     async def _replay_events(self, genie_handle: str, conversation_id: str, since_created_at: Optional[str], seen_ids: Set[str]) -> AsyncIterator[Event]:
         while True:
             page = await self.list_events(genie_handle, conversation_id=conversation_id, since_created_at=since_created_at)

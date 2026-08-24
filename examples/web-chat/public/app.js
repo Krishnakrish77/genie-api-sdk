@@ -174,22 +174,13 @@ function renderConversationMessages(page) {
   scrollToLatest(true);
 }
 
-async function refreshConversationAfterApproval(id) {
-  // Resolving an approval is a separate HTTP request. The paused response can
-  // finish after the original SSE stream closes, so refresh history briefly
-  // rather than requiring a page reload to reveal the completed action.
-  let previousSnapshot;
-  for (let attempt = 0; attempt < 35 && conversationId === id; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-    try {
-      const page = await request(`/api/conversations/${encodeURIComponent(id)}/messages`);
-      const snapshot = JSON.stringify(page.items ?? []);
-      if (conversationId === id && snapshot !== previousSnapshot) renderConversationMessages(page);
-      previousSnapshot = snapshot;
-    } catch {
-      // A later poll may succeed while the completed turn is being persisted.
-    }
-  }
+async function resumeRunAfterApproval(id, runId, lastEventId, assistant) {
+  if (!runId) return;
+  setStatus("Continuing…", "working");
+  const query = lastEventId ? `?lastEventId=${encodeURIComponent(lastEventId)}` : "";
+  const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/genie-runs/${encodeURIComponent(runId)}${query}`);
+  if (!response.ok || !response.body) throw new Error("Couldn’t continue the response");
+  await consumeEventStream(response, assistant);
 }
 
 async function ensureConversation() {
@@ -215,7 +206,7 @@ function processEvent(event, assistant) {
     actionCard("Approve this action?", event.data.skill_name ? `Genie wants to use ${event.data.skill_name}.` : "Genie needs your confirmation to continue.", [
       { label: "Approve", run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "approved" }) },
       { label: "Decline", secondary: true, run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "rejected", rejectionReason: "Declined by user" }) }
-    ], { id: actionId, onCompleted: () => refreshConversationAfterApproval(pendingConversationId) });
+    ], { id: actionId, onCompleted: () => resumeRunAfterApproval(pendingConversationId, event.genie_run_id, event.event_id, assistant).catch(() => setStatus("Couldn’t continue that response", "error")) });
   }
   if (event.type === "runtime_connection.auth_required") {
     const attemptId = event.data.runtime_connection_attempt_id;
@@ -232,6 +223,10 @@ async function streamMessage(message) {
   const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
   if (!response.ok || !response.body) throw new Error("Couldn’t start the response");
   const assistant = messageCard("assistant", "Thinking…");
+  await consumeEventStream(response, assistant);
+}
+
+async function consumeEventStream(response, assistant) {
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
   while (true) {

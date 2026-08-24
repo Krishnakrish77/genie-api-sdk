@@ -5,9 +5,8 @@ the API key or OAuth tokens: `server.mjs` holds credentials, calls the TypeScrip
 streams normalized events to the page.
 
 It intentionally requires people to approve skill actions and runtime
-connections; it never auto-approves either one. After an approval, it refreshes
-the current conversation briefly so a completed paused turn appears without a
-browser reload. Replayed approval events are de-duplicated by call ID.
+connections; it never auto-approves either one. After an approval, it resumes
+the paused turn over SSE. Replayed approval events are de-duplicated by call ID.
 
 ## Run locally
 

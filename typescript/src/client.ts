@@ -92,6 +92,41 @@ export class GenieClient {
     }
   }
 
+  /** Attach to an existing run, for example after resolving a paused approval. */
+  async *streamRun(genieHandle: string, conversationId: string, genieRunId: string, options: { lastEventId?: string; maxReconnects?: number; signal?: AbortSignal } = {}): AsyncGenerator<Event> {
+    const { lastEventId: initialLastEventId, maxReconnects = 3, signal } = options;
+    if (maxReconnects < 0) throw new Error("maxReconnects must be non-negative");
+    let stream = this.reconnect(genieHandle, conversationId, genieRunId, initialLastEventId, signal);
+    let lastEventId = initialLastEventId;
+    let lastCreatedAt: string | undefined;
+    const seenEventIds = new Set<string>(initialLastEventId ? [initialLastEventId] : []);
+    let reconnects = 0;
+    let retryAfterMs = 0;
+    for (;;) {
+      let interrupted = false;
+      try {
+        for await (const event of stream) {
+          if (event.event_id) { seenEventIds.add(event.event_id); lastEventId = event.event_id; }
+          if (event.created_at) lastCreatedAt = event.created_at;
+          yield event;
+          if (event.type === "system.stream_interrupted") { retryAfterMs = Math.max(0, Number(event.data.retry_after_ms) || 0); interrupted = true; break; }
+        }
+      } catch (error) {
+        if (signal?.aborted) throw signal.reason ?? error;
+        interrupted = true;
+      }
+      if (!interrupted) return;
+      if (reconnects < maxReconnects) {
+        reconnects += 1;
+        if (retryAfterMs) await delay(retryAfterMs, signal);
+        stream = this.reconnect(genieHandle, conversationId, genieRunId, lastEventId, signal);
+        continue;
+      }
+      for await (const event of this.replayEvents(genieHandle, conversationId, lastCreatedAt, seenEventIds, signal)) yield event;
+      return;
+    }
+  }
+
   private reconnect(genieHandle: string, conversationId: string, genieRunId: string, lastEventId?: string, signal?: AbortSignal): AsyncIterable<Event> {
     return this.stream("GET", this.path(genieHandle, `/conversations/${this.id(conversationId)}/genie-runs/${this.id(genieRunId)}`), undefined, lastEventId ? { "Last-Event-ID": lastEventId } : undefined, signal);
   }

@@ -32,7 +32,7 @@ test("composer sends on Enter and preserves Shift+Enter for a new line", async (
   assert.match(script, /scrollToLatest\(true\)/);
   assert.match(script, /const resolvedActionIds = new Set\(\)/);
   assert.match(script, /const visibleActionCards = new Map\(\)/);
-  assert.match(script, /refreshConversationAfterApproval/);
+  assert.match(script, /resumeRunAfterApproval/);
   assert.match(script, /skill:\$\{pendingConversationId\}:\$\{event\.data\.call_id\}/);
 });
 
@@ -72,6 +72,7 @@ test("exposes server-side conversation history routes", async () => {
   const source = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   assert.match(source, /client\.listConversations\(config\.genieHandle\)/);
   assert.match(source, /client\.listMessages\(config\.genieHandle, decodeURIComponent\(historyRoute\[1\]\)\)/);
+  assert.match(source, /client\.streamRun\(config\.genieHandle/);
 });
 
 test("OAuth login stores the PKCE request, accepts its callback, and rejects a callback after a restart", async () => {

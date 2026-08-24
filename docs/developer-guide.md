@@ -170,6 +170,22 @@ When receiving `runtime_connection.auth_required`, call `get_runtime_connection_
 
 Use `resolve_business_approval` / `resolveBusinessApproval` for a business-approval `call_id`, with the same `approved` or `rejected` resolution. After a completed run, submit an optional rating with `submit_feedback` / `submitFeedback` using `positive` or `negative` and, optionally, a comment.
 
+If the initial SSE response closes while the turn is paused, continue the same run after resolving the approval. Pass the confirmation event's `genie_run_id` and `event_id` so the API resumes after that event:
+
+```ts
+await client.resolveSkillApproval(handle, conversationId, callId, "approved");
+for await (const event of client.streamRun(handle, conversationId, genieRunId, { lastEventId: eventId })) {
+  // render the resumed events
+}
+```
+
+```python
+client.resolve_skill_approval(handle, conversation_id, call_id, "approved")
+for event in client.stream_run(handle, conversation_id, genie_run_id, last_event_id=event_id):
+    # render the resumed events
+    pass
+```
+
 ## Files and history
 
 Upload a file first, then pass its returned `file_id` / `fileId` to `stream_message` / `streamMessage` or `send_message` / `sendMessage`. File size is limited by Workato (currently 20 MB).
