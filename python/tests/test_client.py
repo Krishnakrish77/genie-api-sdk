@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from genie_api_sdk import (AgentMessageEvent, ApiKeyAuth, AsyncGenieClient,
-                           AsyncOAuthAuth, GenieClient, OAuthTokens,
+                           AsyncOAuthAuth, AsyncRefreshableOAuthAuth, GenieClient, OAuthAuth, OAuthTokens,
                            RefreshableOAuthAuth, AuthenticationError)
 
 
@@ -174,6 +174,36 @@ def test_async_oauth_provider_is_awaited():
     assert asyncio.run(run()).conversation_id == "conversation"
 
 
+def test_oauth_omits_the_api_key_user_header_and_async_refresh_is_coalesced():
+    def handler(request):
+        assert request.headers["authorization"] == "Bearer access-token"
+        assert "x-idp-user-id" not in request.headers
+        return httpx.Response(200, json={"conversation_id": "conversation"})
+
+    client = GenieClient(auth=OAuthAuth(lambda: "access-token"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    assert client.create_conversation("genie").conversation_id == "conversation"
+
+    async def run():
+        tokens = OAuthTokens("expired", "refresh", datetime.now(timezone.utc) - timedelta(seconds=1))
+        refreshes = 0
+
+        async def load_tokens():
+            return tokens
+
+        async def refresh_and_persist(_current):
+            nonlocal refreshes, tokens
+            refreshes += 1
+            tokens = OAuthTokens("fresh", "next", datetime.now(timezone.utc) + timedelta(hours=1))
+            return tokens
+
+        auth = AsyncRefreshableOAuthAuth(load_tokens=load_tokens, refresh_and_persist=refresh_and_persist)
+        headers = await asyncio.gather(auth.headers(), auth.headers(), auth.headers())
+        assert [item["Authorization"] for item in headers] == ["Bearer fresh", "Bearer fresh", "Bearer fresh"]
+        assert refreshes == 1
+
+    asyncio.run(run())
+
+
 def test_paths_are_encoded_and_absent_optional_fields_are_omitted():
     requests = []
 
@@ -280,15 +310,21 @@ def test_async_client_covers_all_rest_operations():
         assert (await client.send_message("genie", "c", "hello", file_id="f")).genie_run_id == "run"
         await client.list_events("genie", conversation_id="c", since_created_at="start", limit=1)
         await client.resolve_skill_approval("genie", "c", "call", "approved")
+        await client.resolve_business_approval("genie", "c", "business-call", "rejected", rejection_reason="no")
+        await client.submit_feedback("genie", "c", "run", "negative", comment="Not useful")
         await client.get_runtime_connection_link("genie", "attempt")
         await client.reject_runtime_connection("genie", "attempt")
         assert await client.upload_file("genie", "c", ("note.txt", io.BytesIO(b"hello"), "text/plain")) == "f"
         paths = {request.url.path for request in requests}
-        assert paths >= {"/api/v1/genies/genie/chat/conversations", "/api/v1/genies/genie/chat/conversations/c", "/api/v1/genies/genie/chat/conversations/c/messages", "/api/v1/genies/genie/chat/conversations/events", "/api/v1/genies/genie/chat/conversations/c/skill_approval/call", "/api/v1/genies/genie/chat/runtime_connection/attempt/link", "/api/v1/genies/genie/chat/runtime_connection/attempt/reject", "/api/v1/genies/genie/chat/conversations/c/upload"}
+        assert paths >= {"/api/v1/genies/genie/chat/conversations", "/api/v1/genies/genie/chat/conversations/c", "/api/v1/genies/genie/chat/conversations/c/messages", "/api/v1/genies/genie/chat/conversations/events", "/api/v1/genies/genie/chat/conversations/c/skill_approval/call", "/api/v1/genies/genie/chat/conversations/c/business_approval/business-call", "/api/v1/genies/genie/chat/conversations/c/genie-runs/run/feedback", "/api/v1/genies/genie/chat/runtime_connection/attempt/link", "/api/v1/genies/genie/chat/runtime_connection/attempt/reject", "/api/v1/genies/genie/chat/conversations/c/upload"}
         message_request = next(request for request in requests if request.method == "POST" and request.url.path.endswith("/messages"))
         assert json.loads(message_request.content) == {"message": "hello", "file_id": "f", "stream": False}
         approval_request = next(request for request in requests if "/skill_approval/" in request.url.path)
         assert json.loads(approval_request.content) == {"resolution": "approved"}
+        business_approval_request = next(request for request in requests if "/business_approval/" in request.url.path)
+        assert json.loads(business_approval_request.content) == {"resolution": "rejected", "rejection_reason": "no"}
+        feedback_request = next(request for request in requests if request.url.path.endswith("/feedback"))
+        assert json.loads(feedback_request.content) == {"reaction": "negative", "comment": "Not useful"}
         upload_request = next(request for request in requests if request.url.path.endswith("/upload"))
         assert upload_request.headers["content-type"].startswith("multipart/form-data")
         conversation_list = next(request for request in requests if request.method == "GET" and request.url.path.endswith("/conversations"))

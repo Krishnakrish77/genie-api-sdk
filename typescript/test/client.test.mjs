@@ -45,6 +45,27 @@ test("refreshes and persists expired OAuth credentials once", async () => {
   assert.equal(refreshes, 2);
 });
 
+test("OAuth sends only a bearer token and concurrent refreshes are coalesced", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "access-token"),
+    fetch: async (_url, init) => {
+      assert.equal(init.headers.Authorization, "Bearer access-token");
+      assert.equal(init.headers["X-IDP-User-Id"], undefined);
+      return Response.json({ conversation_id: "conversation" });
+    }
+  });
+  await client.createConversation("genie");
+
+  let refreshes = 0;
+  const auth = new RefreshableOAuthAuth(
+    () => ({ accessToken: "expired", refreshToken: "refresh", expiresAt: new Date(0) }),
+    async () => { refreshes += 1; return { accessToken: "fresh", refreshToken: "next", expiresAt: new Date(Date.now() + 3_600_000) }; }
+  );
+  const headers = await Promise.all([auth.headers(), auth.headers(), auth.headers()]);
+  assert.deepEqual(headers.map((value) => value.Authorization), ["Bearer fresh", "Bearer fresh", "Bearer fresh"]);
+  assert.equal(refreshes, 1);
+});
+
 test("retries safe reads once after forced refresh but never retries message posts", async () => {
   const auth = {
     token: "old",
