@@ -144,6 +144,8 @@ await client.resolveSkillApproval(handle, conversationId, callId, "approved");
 
 When receiving `runtime_connection.auth_required`, call `get_runtime_connection_link` / `getRuntimeConnectionLink` with the event's `runtime_connection_attempt_id`; present the returned authentication link to the user. If they decline, call `reject_runtime_connection` / `rejectRuntimeConnection`.
 
+Use `resolve_business_approval` / `resolveBusinessApproval` for a business-approval `call_id`, with the same `approved` or `rejected` resolution. After a completed run, submit an optional rating with `submit_feedback` / `submitFeedback` using `positive` or `negative` and, optionally, a comment.
+
 ## Files and history
 
 Upload a file first, then pass its returned `file_id` / `fileId` to `stream_message` / `streamMessage` or `send_message` / `sendMessage`. File size is limited by Workato (currently 20 MB).

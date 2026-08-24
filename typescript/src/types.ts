@@ -91,6 +91,7 @@ export function isStreamInterruptedEvent(event: Event): event is StreamInterrupt
 }
 
 export type SkillResolution = "approved" | "rejected";
+export type FeedbackReaction = "positive" | "negative";
 
 export interface RuntimeConnectionLink {
   status: "auth_required" | "authorized";

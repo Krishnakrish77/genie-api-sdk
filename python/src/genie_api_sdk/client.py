@@ -152,6 +152,16 @@ class GenieClient:
             raise ValueError("resolution must be 'approved' or 'rejected'")
         raise_for_status(self._client.post(self._path(genie_handle, f"/conversations/{self._id(conversation_id)}/skill_approval/{self._id(call_id)}"), json=self._json(resolution=resolution, rejection_reason=rejection_reason), headers=self._headers()))
 
+    def resolve_business_approval(self, genie_handle: str, conversation_id: str, call_id: str, resolution: str, *, rejection_reason: Optional[str] = None) -> None:
+        if resolution not in {"approved", "rejected"}:
+            raise ValueError("resolution must be 'approved' or 'rejected'")
+        raise_for_status(self._client.post(self._path(genie_handle, f"/conversations/{self._id(conversation_id)}/business_approval/{self._id(call_id)}"), json=self._json(resolution=resolution, rejection_reason=rejection_reason), headers=self._headers()))
+
+    def submit_feedback(self, genie_handle: str, conversation_id: str, genie_run_id: str, reaction: str, *, comment: Optional[str] = None) -> None:
+        if reaction not in {"positive", "negative"}:
+            raise ValueError("reaction must be 'positive' or 'negative'")
+        raise_for_status(self._client.post(self._path(genie_handle, f"/conversations/{self._id(conversation_id)}/genie-runs/{self._id(genie_run_id)}/feedback"), json=self._json(reaction=reaction, comment=comment), headers=self._headers()))
+
     def get_runtime_connection_link(self, genie_handle: str, attempt_id: str) -> Mapping[str, object]:
         return self._data(raise_for_status(self._client.post(self._path(genie_handle, f"/runtime_connection/{self._id(attempt_id)}/link"), headers=self._headers())))
 

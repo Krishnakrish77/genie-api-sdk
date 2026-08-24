@@ -148,12 +148,18 @@ test("covers conversation, event, approval, runtime connection, and upload opera
   assert.equal((await client.listMessages("genie", "c", { limit: 1 })).items[0].message_id, "m");
   assert.equal((await client.listEvents("genie", { conversationId: "c", sinceCreatedAt: "start", limit: 1 })).nextSinceCreatedAt, "next-event");
   await client.resolveSkillApproval("genie", "c", "call", "rejected", "no");
+  await client.resolveBusinessApproval("genie", "c", "business-call", "approved");
+  await client.submitFeedback("genie", "c", "run", "positive", "Useful");
   assert.equal((await client.getRuntimeConnectionLink("genie", "attempt")).status, "authorized");
   await client.rejectRuntimeConnection("genie", "attempt", "no");
   assert.equal(await client.uploadFile("genie", "c", new Blob(["hello"])), "f");
 
   const approval = requests.find((request) => request.path.includes("/skill_approval/"));
   assert.deepEqual(JSON.parse(approval.init.body), { resolution: "rejected", rejection_reason: "no" });
+  const businessApproval = requests.find((request) => request.path.includes("/business_approval/"));
+  assert.deepEqual(JSON.parse(businessApproval.init.body), { resolution: "approved" });
+  const feedback = requests.find((request) => request.path.endsWith("/feedback"));
+  assert.deepEqual(JSON.parse(feedback.init.body), { reaction: "positive", comment: "Useful" });
   const events = requests.find((request) => request.path.endsWith("/events"));
   assert.equal(events.query.get("conversation_id"), "c");
   assert.equal(events.query.get("since_created_at"), "start");

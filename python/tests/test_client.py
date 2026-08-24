@@ -218,12 +218,16 @@ def test_all_rest_operations_serialize_the_documented_paths_and_payloads():
     assert client.list_messages("genie", "c", limit=1).items[0].message_id == "m"
     assert client.list_events("genie", conversation_id="c", since_created_at="start", limit=1).next_since_created_at == "cursor"
     client.resolve_skill_approval("genie", "c", "call", "rejected", rejection_reason="no")
+    client.resolve_business_approval("genie", "c", "business-call", "approved")
+    client.submit_feedback("genie", "c", "run", "positive", comment="Useful")
     assert client.get_runtime_connection_link("genie", "attempt")["status"] == "auth_required"
     client.reject_runtime_connection("genie", "attempt", reason="no")
     assert client.upload_file("genie", "c", ("note.txt", io.BytesIO(b"hello"), "text/plain")) == "f"
 
     payloads = {request.url.path: json.loads(request.content) for request in requests if request.headers.get("content-type") == "application/json"}
     assert payloads[next(path for path in payloads if "/skill_approval/" in path)] == {"resolution": "rejected", "rejection_reason": "no"}
+    assert payloads[next(path for path in payloads if "/business_approval/" in path)] == {"resolution": "approved"}
+    assert payloads[next(path for path in payloads if path.endswith("/feedback"))] == {"reaction": "positive", "comment": "Useful"}
     assert payloads[next(path for path in payloads if path.endswith("/reject"))] == {"reason": "no"}
     events_request = next(request for request in requests if request.url.path.endswith("/events"))
     assert dict(events_request.url.params) == {"since_created_at": "start", "conversation_id": "c", "limit": "1"}

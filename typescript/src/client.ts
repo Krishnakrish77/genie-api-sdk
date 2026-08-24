@@ -1,4 +1,4 @@
-import type { ClientOptions, Conversation, Event, EventData, Message, Page, Run, RuntimeConnectionLink, SkillResolution } from "./types.js";
+import type { ClientOptions, Conversation, Event, EventData, FeedbackReaction, Message, Page, Run, RuntimeConnectionLink, SkillResolution } from "./types.js";
 import type { Auth } from "./auth.js";
 
 const DEFAULT_BASE_URL = "https://genie-api.workato.com";
@@ -104,6 +104,14 @@ export class GenieClient {
 
   async resolveSkillApproval(genieHandle: string, conversationId: string, callId: string, resolution: SkillResolution, rejectionReason?: string): Promise<void> {
     await this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/skill_approval/${this.id(callId)}`), undefined, { resolution, rejection_reason: rejectionReason });
+  }
+
+  async resolveBusinessApproval(genieHandle: string, conversationId: string, callId: string, resolution: SkillResolution, rejectionReason?: string): Promise<void> {
+    await this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/business_approval/${this.id(callId)}`), undefined, { resolution, rejection_reason: rejectionReason });
+  }
+
+  async submitFeedback(genieHandle: string, conversationId: string, genieRunId: string, reaction: FeedbackReaction, comment?: string): Promise<void> {
+    await this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/genie-runs/${this.id(genieRunId)}/feedback`), undefined, { reaction, comment });
   }
 
   getRuntimeConnectionLink(genieHandle: string, attemptId: string): Promise<RuntimeConnectionLink> {
