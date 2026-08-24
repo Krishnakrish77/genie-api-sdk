@@ -74,7 +74,9 @@ test("exposes server-side conversation history routes", async () => {
   const source = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   assert.match(source, /client\.listConversations\(config\.genieHandle\)/);
   assert.match(source, /client\.listMessages\(config\.genieHandle, decodeURIComponent\(historyRoute\[1\]\)\)/);
-  assert.match(source, /client\.streamRun\(config\.genieHandle/);
+  assert.match(source, /const activeRuns = new Map\(\)/);
+  assert.match(source, /rememberRunEvent\(request, decodeURIComponent\(messageRoute\[1\]\), event\)/);
+  assert.match(source, /client\.streamRun\(config\.genieHandle, conversationId, run\.genieRunId/);
 });
 
 test("OAuth login stores the PKCE request, accepts its callback, and rejects a callback after a restart", async () => {

@@ -186,11 +186,9 @@ function renderConversationMessages(page) {
   scrollToLatest(true);
 }
 
-async function resumeRunAfterApproval(id, runId, lastEventId, assistant) {
-  if (!runId) return;
+async function resumeRunAfterApproval(id, assistant) {
   setStatus("Continuing…", "working");
-  const query = lastEventId ? `?lastEventId=${encodeURIComponent(lastEventId)}` : "";
-  const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/genie-runs/${encodeURIComponent(runId)}${query}`);
+  const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/resume`);
   if (!response.ok || !response.body) throw new Error("Couldn’t continue the response");
   await consumeEventStream(response, assistant);
 }
@@ -221,7 +219,7 @@ function processEvent(event, assistant) {
     actionCard("Approve this action?", event.data.skill_name ? `Genie wants to use ${event.data.skill_name}.` : "Genie needs your confirmation to continue.", [
       { label: "Approve", run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "approved" }) },
       { label: "Decline", secondary: true, run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "rejected", rejectionReason: "Declined by user" }) }
-    ], { id: actionId, runId: event.genie_run_id, onCompleted: () => resumeRunAfterApproval(pendingConversationId, event.genie_run_id, event.event_id, assistant).catch(() => setStatus("Couldn’t continue that response", "error")) });
+    ], { id: actionId, runId: event.genie_run_id, onCompleted: () => resumeRunAfterApproval(pendingConversationId, assistant).catch(() => setStatus("Couldn’t continue that response", "error")) });
     const card = visibleActionCards.get(actionId);
     if (card && event.genie_run_id) card.dataset.genieRunId = event.genie_run_id;
   }
