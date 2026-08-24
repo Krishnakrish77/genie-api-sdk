@@ -186,13 +186,22 @@ def test_oauth_omits_the_api_key_user_header_and_async_refresh_is_coalesced():
     async def run():
         tokens = OAuthTokens("expired", "refresh", datetime.now(timezone.utc) - timedelta(seconds=1))
         refreshes = 0
+        initial_loads = 0
+        all_initial_loads = asyncio.Event()
 
         async def load_tokens():
+            nonlocal initial_loads
+            initial_loads += 1
+            if initial_loads <= 3:
+                if initial_loads == 3:
+                    all_initial_loads.set()
+                await all_initial_loads.wait()
             return tokens
 
         async def refresh_and_persist(_current):
             nonlocal refreshes, tokens
             refreshes += 1
+            await asyncio.sleep(0)
             tokens = OAuthTokens("fresh", "next", datetime.now(timezone.utc) + timedelta(hours=1))
             return tokens
 
