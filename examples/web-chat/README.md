@@ -13,10 +13,10 @@ Use Node.js 18 or later, then configure a Genie client in a non-production
 workspace:
 
 ```sh
-export WORKATO_API_KEY='...'
-export WORKATO_IDP_USER_ID='...'
-export WORKATO_GENIE_HANDLE='...'
 cd examples/web-chat
+cp .env.example .env
+# Edit .env with your non-production values, then load it into this shell.
+set -a && source .env && set +a
 npm start
 ```
 
@@ -24,7 +24,9 @@ Open the printed localhost URL in your browser. `npm start` first builds the
 local TypeScript SDK, then starts the example server.
 
 Set `WORKATO_BASE_URL` only for another Workato data center or a test server.
-Do not expose the API key to browser code or commit it to a file.
+The server does not load `.env` automatically, so the explicit shell command
+keeps the example dependency-free. Do not expose the API key to browser code or
+commit `.env`.
 
 ## Tests
 
