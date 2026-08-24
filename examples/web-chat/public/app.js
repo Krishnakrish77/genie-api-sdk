@@ -8,22 +8,19 @@ const newChat = document.querySelector("#new-chat");
 let suggestions = document.querySelector("#suggestions");
 const conversationList = document.querySelector("#conversation-list");
 const historyStatus = document.querySelector("#history-status");
-function storedConversationId() {
-  const id = localStorage.getItem("genie-conversation-id");
-  // Older versions could persist the literal string "undefined" when a beta
-  // gateway wrapped its create-conversation response.
-  if (id === "undefined" || id === "null") {
-    localStorage.removeItem("genie-conversation-id");
-    return null;
-  }
-  return id;
-}
-
-let conversationId = storedConversationId();
+// Opening the app always starts a new canvas. People opt into resuming a
+// server-side conversation from the sidebar, just as they do in chat apps.
+let conversationId = null;
 
 function setStatus(text, state = "ready") {
   connection.textContent = text;
   connection.dataset.state = state;
+}
+
+function scrollToLatest(force = false) {
+  const nearBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 180;
+  if (!force && !nearBottom) return;
+  requestAnimationFrame(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" }));
 }
 
 function messageCard(role, text = "") {
@@ -39,7 +36,7 @@ function messageCard(role, text = "") {
   content.textContent = text;
   card.append(label, content);
   thread.append(card);
-  card.scrollIntoView({ behavior: "smooth", block: "end" });
+  scrollToLatest(true);
   return content;
 }
 
@@ -128,7 +125,7 @@ function actionCard(title, description, actions) {
   }
   card.append(controls);
   thread.append(card);
-  card.scrollIntoView({ behavior: "smooth", block: "end" });
+  scrollToLatest();
 }
 
 async function request(url, { method = "GET", body } = {}) {
@@ -189,6 +186,7 @@ async function selectConversation(id) {
       if (message.source === "genie") renderMarkdown(content, message.content ?? "");
     }
     if (!(page.items ?? []).length) thread.append(Object.assign(document.createElement("p"), { className: "history-empty", textContent: "This conversation has no messages yet." }));
+    scrollToLatest(true);
     setStatus("Ready");
     await refreshConversations();
   } catch {
@@ -206,7 +204,10 @@ async function ensureConversation() {
 }
 
 function processEvent(event, assistant) {
-  if (event.type === "agent.message") renderMarkdown(assistant, event.data.message ?? "");
+  if (event.type === "agent.message") {
+    renderMarkdown(assistant, event.data.message ?? "");
+    scrollToLatest();
+  }
   if (event.type === "processing.started") setStatus("Thinking…", "working");
   if (event.type === "processing.finished") setStatus("Ready");
   if (event.type === "system.stream_interrupted") setStatus("Reconnecting…", "working");
@@ -279,5 +280,4 @@ document.querySelectorAll("[data-prompt]").forEach((button) => button.addEventLi
   composer.requestSubmit();
 }));
 refreshConversations();
-if (conversationId) selectConversation(conversationId);
 input.focus();

@@ -21,7 +21,9 @@ test("composer sends on Enter and preserves Shift+Enter for a new line", async (
   const script = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
   assert.match(script, /event\.key === "Enter" && !event\.shiftKey && !event\.isComposing/);
   assert.match(script, /composer\.requestSubmit\(\)/);
-  assert.match(script, /id === "undefined" \|\| id === "null"/);
+  assert.match(script, /let conversationId = null/);
+  assert.match(script, /function scrollToLatest/);
+  assert.match(script, /scrollToLatest\(true\)/);
 });
 
 test("renders Genie Markdown with DOM nodes rather than injected HTML", async () => {
