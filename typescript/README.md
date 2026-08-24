@@ -1,6 +1,6 @@
 # genie-api-sdk
 
-Unofficial TypeScript client for the Genie Headless API. It is community-maintained and not affiliated with or endorsed by Workato. Requires Node.js 18+.
+Unofficial TypeScript client for the Genie Headless API. It is community-maintained and not affiliated with or endorsed by Workato. Requires Node.js 20.19+.
 
 For installation, supported workflows, and testing, see the repository [developer guide](../docs/developer-guide.md).
 
@@ -15,7 +15,16 @@ for await (const event of client.streamMessage("my-genie", conversation.conversa
 }
 ```
 
-Use `new OAuthAuth(() => currentAccessToken())` as `auth` for OAuth-authenticated applications.
+For browser OAuth, use the SDK PKCE helper. Store `state`, `codeVerifier`, and tokens in your application's protected session; the SDK deliberately does not choose storage. The helper defaults to Production US. Set `identityBaseUrl` for Preview or a custom environment.
+
+```ts
+import { GenieClient, OAuthPkce } from "genie-api-sdk";
+
+const oauth = new OAuthPkce({ clientId: process.env.WORKATO_OAUTH_CLIENT_ID!, redirectUri: "https://app.example/auth/callback", identityBaseUrl: "https://id.preview.workato.com" });
+const login = await oauth.createAuthorizationRequest(); // save login, then redirect to login.authorizationUrl
+const tokens = await oauth.exchangeCallback(callbackUrl, login); // save tokens
+const client = new GenieClient({ auth: oauth.refreshableAuth(() => loadTokens(), (next) => persistTokens(next)) });
+```
 
 For rotating OAuth credentials, use `RefreshableOAuthAuth`. Its `refreshAndPersist` callback must atomically refresh and persist the winning token set (for example, with a database transaction or distributed lock).
 

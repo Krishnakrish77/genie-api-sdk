@@ -1,7 +1,47 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AuthenticationError, GenieClient, OAuthAuth, RefreshableOAuthAuth } from "../dist/index.js";
+import { AuthenticationError, GenieClient, OAuthAuth, OAuthPkce, RefreshableOAuthAuth } from "../dist/index.js";
+
+test("OAuth PKCE builds a public-client authorization request and exchanges rotating tokens", async () => {
+  const requests = [];
+  const oauth = new OAuthPkce({
+    // Mirrors Workato's real deployments: the issuer claim (id.workato.com) can differ from
+    // the identityBaseUrl a Preview/on-prem environment is queried at.
+    clientId: "client-id", redirectUri: "https://app.example/callback", identityBaseUrl: "https://identity.example",
+    fetch: async (url, init) => {
+      const href = String(url);
+      if (href.endsWith("/.well-known/openid-configuration")) {
+        return new Response(JSON.stringify({
+          issuer: "https://issuer.example/",
+          authorization_endpoint: "https://identity.example/oauth/authorize",
+          token_endpoint: "https://identity.example/oauth/token",
+          response_types_supported: ["code"],
+          subject_types_supported: ["public"],
+          id_token_signing_alg_values_supported: ["RS256"],
+        }), { headers: { "content-type": "application/json" } });
+      }
+      requests.push({ url: href, body: String(init?.body ?? ""), authorization: new Headers(init?.headers).get("authorization") });
+      return new Response(JSON.stringify({ access_token: requests.length === 1 ? "access" : "fresh", refresh_token: requests.length === 1 ? "refresh-1" : "refresh-2", expires_in: 3600, token_type: "Bearer" }), { headers: { "content-type": "application/json" } });
+    }
+  });
+  const login = await oauth.createAuthorizationRequest();
+  const authorization = new URL(login.authorizationUrl);
+  assert.equal(authorization.origin, "https://identity.example");
+  assert.equal(authorization.searchParams.get("redirect_uri"), "https://app.example/callback");
+  assert.equal(authorization.searchParams.get("scope"), "openid profile");
+  assert.equal(authorization.searchParams.get("state"), login.state);
+  assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
+  await assert.rejects(() => oauth.exchangeCallback("https://app.example/callback?code=code&state=wrong", login), /state/);
+  const tokens = await oauth.exchangeCallback(`https://app.example/callback?code=code&state=${login.state}`, login);
+  assert.equal(tokens.refreshToken, "refresh-1");
+  const refreshed = await oauth.refresh(tokens);
+  assert.equal(refreshed.refreshToken, "refresh-2");
+  assert.match(requests[0].body, /grant_type=authorization_code/);
+  assert.match(requests[0].body, /client_id=client-id/);
+  assert.match(requests[1].body, /grant_type=refresh_token/);
+  assert.doesNotMatch(requests.map((request) => `${request.body} ${request.authorization}`).join(" "), /client_secret|Basic /);
+});
 
 test("parses CRLF SSE frames split at arbitrary chunk boundaries", async () => {
   const encoder = new TextEncoder();
@@ -91,6 +131,17 @@ test("retries safe reads once after forced refresh but never retries message pos
   await assert.rejects(() => client.sendMessage("genie", "conversation", "hello"));
   assert.equal(requests.length, 3);
   assert.equal(auth.forceRefreshCalls, 1);
+});
+
+test("preserves the gateway 401 when an OAuth refresh fails", async () => {
+  const client = new GenieClient({
+    auth: { headers: () => ({ Authorization: "Bearer rejected" }), forceRefresh: () => { throw new Error("refresh rejected"); } },
+    fetch: async () => new Response(JSON.stringify({ error: "OAuth client is not attached to this genie" }), { status: 401, headers: { "content-type": "application/json" } })
+  });
+  await assert.rejects(
+    () => client.getConversation("genie", "conversation"),
+    (error) => error instanceof AuthenticationError && error.body.error === "OAuth client is not attached to this genie"
+  );
 });
 
 test("throws a typed authentication error with the request ID", async () => {
