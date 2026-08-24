@@ -73,7 +73,7 @@ export class OAuthPkce {
   constructor({ clientId, redirectUri, identityBaseUrl = DEFAULT_IDENTITY_BASE_URL, fetch }: OAuthPkceOptions) {
     this.clientId = clientId;
     this.redirectUri = redirectUri;
-    this.identityBaseUrl = identityBaseUrl.replace(/\/+$/, "");
+    this.identityBaseUrl = trimTrailingSlashes(identityBaseUrl);
     this.customFetch = fetch;
   }
 
@@ -143,6 +143,12 @@ export class OAuthPkce {
     if (!refreshToken) throw new Error("OAuth token response did not include a refresh token");
     return { accessToken: response.access_token, refreshToken, expiresAt: new Date(Date.now() + (response.expires_in ?? 3600) * 1000) };
   }
+}
+
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
 }
 
 export class RefreshableOAuthAuth implements Auth {
