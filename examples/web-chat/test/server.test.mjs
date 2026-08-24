@@ -26,14 +26,15 @@ test("composer sends on Enter and preserves Shift+Enter for a new line", async (
   assert.match(script, /scrollToLatest\(true\)/);
 });
 
-test("renders Genie Markdown with DOM nodes rather than injected HTML", async () => {
+test("renders Genie Markdown with a maintained parser and sanitizer", async () => {
   const script = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(script, /import \{ marked \} from "\/vendor\/marked\.js"/);
+  assert.match(script, /import DOMPurify from "\/vendor\/dompurify\.js"/);
   assert.match(script, /function renderMarkdown/);
-  assert.match(script, /document\.createElement\("strong"\)/);
   assert.match(script, /renderMarkdown\(assistant, event\.data\.message/);
-  assert.match(script, /new URL\(destination\)/);
-  assert.match(script, /\["https:", "http:"\]\./);
-  assert.doesNotMatch(script, /innerHTML\s*=\s*markdown/);
+  assert.match(script, /marked\.parse\(/);
+  assert.match(script, /DOMPurify\.sanitize/);
+  assert.doesNotMatch(script, /function appendInlineMarkdown/);
 });
 
 test("serves the chat UI and rejects an empty message before calling the API", async () => {
@@ -45,6 +46,8 @@ test("serves the chat UI and rejects an empty message before calling the API", a
     const page = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(page.status, 200);
     assert.match(await page.text(), /What can we make easier today/);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/vendor/marked.js`)).status, 200);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/vendor/dompurify.js`)).status, 200);
     const response = await fetch(`http://127.0.0.1:${port}/api/conversations/example/messages`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: " " })
     });

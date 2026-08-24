@@ -9,5 +9,9 @@
     "e2e": "node e2e-smoke.mjs"
   },
   "engines": { "node": ">=18" },
-  "dependencies": { "genie-api-sdk": "^0.1.0-beta.1" }
+  "dependencies": {
+    "dompurify": "^3.4.14",
+    "genie-api-sdk": "^0.1.0-beta.1",
+    "marked": "^18.0.10"
+  }
 }

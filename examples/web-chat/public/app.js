@@ -1,3 +1,6 @@
+import { marked } from "/vendor/marked.js";
+import DOMPurify from "/vendor/dompurify.js";
+
 const thread = document.querySelector("#thread");
 const emptyState = document.querySelector("#empty-state");
 const composer = document.querySelector("#composer");
@@ -40,71 +43,18 @@ function messageCard(role, text = "") {
   return content;
 }
 
-function appendInlineMarkdown(element, text) {
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^\s)]+\))/g;
-  let position = 0;
-  for (const match of text.matchAll(pattern)) {
-    element.append(document.createTextNode(text.slice(position, match.index)));
-    const token = match[0];
-    if (token.startsWith("**")) {
-      const strong = document.createElement("strong");
-      strong.textContent = token.slice(2, -2);
-      element.append(strong);
-    } else if (token.startsWith("`")) {
-      const code = document.createElement("code");
-      code.textContent = token.slice(1, -1);
-      element.append(code);
-    } else {
-      const [, label, destination] = token.match(/^\[([^\]]+)\]\(([^\s)]+)\)$/) ?? [];
-      let href;
-      try {
-        const url = new URL(destination);
-        if (["https:", "http:"].includes(url.protocol)) href = url.href;
-      } catch { /* Render invalid or relative destinations as ordinary text. */ }
-      if (href) {
-        const link = document.createElement("a");
-        link.href = href;
-        link.target = "_blank";
-        link.rel = "noreferrer";
-        link.textContent = label;
-        element.append(link);
-      } else {
-        element.append(document.createTextNode(token));
-      }
-    }
-    position = (match.index ?? 0) + token.length;
-  }
-  element.append(document.createTextNode(text.slice(position)));
-}
-
 function renderMarkdown(container, markdown) {
-  container.replaceChildren();
-  const blocks = String(markdown).trim().split(/\n{2,}/);
-  for (const block of blocks) {
-    let element;
-    if (block.startsWith("```") && block.endsWith("```")) {
-      element = document.createElement("pre");
-      const code = document.createElement("code");
-      code.textContent = block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "");
-      element.append(code);
-    } else if (/^#{1,3}\s+/.test(block)) {
-      const [, hashes, text] = block.match(/^(#{1,3})\s+([\s\S]*)$/) ?? [];
-      element = document.createElement(`h${hashes.length + 1}`);
-      appendInlineMarkdown(element, text);
-    } else if (/^[-*]\s+/.test(block) || /^\d+\.\s+/.test(block)) {
-      const ordered = /^\d+\.\s+/.test(block);
-      element = document.createElement(ordered ? "ol" : "ul");
-      for (const line of block.split("\n")) {
-        const item = line.replace(ordered ? /^\d+\.\s+/ : /^[-*]\s+/, "");
-        const li = document.createElement("li");
-        appendInlineMarkdown(li, item);
-        element.append(li);
-      }
-    } else {
-      element = document.createElement("p");
-      appendInlineMarkdown(element, block);
-    }
-    container.append(element);
+  const html = marked.parse(String(markdown), { async: false, gfm: true, breaks: true });
+  container.innerHTML = DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+  for (const table of container.querySelectorAll("table")) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-scroll";
+    table.before(wrapper);
+    wrapper.append(table);
+  }
+  for (const link of container.querySelectorAll("a[href]")) {
+    link.target = "_blank";
+    link.rel = "noreferrer";
   }
 }
 

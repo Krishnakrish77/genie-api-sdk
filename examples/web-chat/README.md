@@ -25,8 +25,8 @@ loads its local `.env` file at startup, while real deployment environment
 variables take precedence.
 
 Press Enter to send a message; use Shift+Enter for a new line. Genie responses
-render common safe Markdown (headings, lists, bold text, inline code, code
-blocks, and HTTPS links). The app also loads the authenticated user's recent
+render sanitized GitHub-flavored Markdown, including headings, lists, links,
+code blocks, and tables. The app also loads the authenticated user's recent
 conversations and lets them resume a chat with its message history.
 
 Set `WORKATO_BASE_URL` only for another Workato data center or a test server.

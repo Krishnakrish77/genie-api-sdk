@@ -9,6 +9,10 @@ import { ApiKeyAuth, GenieClient } from "genie-api-sdk";
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIRECTORY = join(DIRECTORY, "public");
 const CONTENT_TYPES = { ".css": "text/css; charset=utf-8", ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
+const VENDOR_FILES = new Map([
+  ["/vendor/marked.js", join(DIRECTORY, "node_modules/marked/lib/marked.esm.js")],
+  ["/vendor/dompurify.js", join(DIRECTORY, "node_modules/dompurify/dist/purify.es.mjs")]
+]);
 
 export function applyDotEnv(contents, environment) {
   for (const line of contents.split(/\r?\n/)) {
@@ -64,6 +68,15 @@ function publicPath(url) {
 }
 
 async function serveStatic(request, response) {
+  const pathname = new URL(request.url, "http://localhost").pathname;
+  const vendorFile = VENDOR_FILES.get(pathname);
+  if (vendorFile) {
+    try {
+      const contents = await readFile(vendorFile);
+      response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "public, max-age=3600" });
+      return response.end(contents);
+    } catch { return sendJson(response, 404, { error: "Not found" }); }
+  }
   const file = publicPath(request.url);
   if (!file) return sendJson(response, 404, { error: "Not found" });
   try {
