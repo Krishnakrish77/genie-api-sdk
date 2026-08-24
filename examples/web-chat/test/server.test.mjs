@@ -32,6 +32,8 @@ test("composer sends on Enter and preserves Shift+Enter for a new line", async (
   assert.match(script, /scrollToLatest\(true\)/);
   assert.match(script, /const resolvedActionIds = new Set\(\)/);
   assert.match(script, /const visibleActionCards = new Map\(\)/);
+  assert.match(script, /const completedRunIds = new Set\(\)/);
+  assert.match(script, /dismissCompletedRunActions\(event\.genie_run_id\)/);
   assert.match(script, /resumeRunAfterApproval/);
   assert.match(script, /skill:\$\{pendingConversationId\}:\$\{event\.data\.call_id\}/);
 });

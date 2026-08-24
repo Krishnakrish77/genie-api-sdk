@@ -13,6 +13,7 @@ const conversationList = document.querySelector("#conversation-list");
 const historyStatus = document.querySelector("#history-status");
 const resolvedActionIds = new Set();
 const visibleActionCards = new Map();
+const completedRunIds = new Set();
 // Opening the app always starts a new canvas. People opt into resuming a
 // server-side conversation from the sidebar, just as they do in chat apps.
 let conversationId = null;
@@ -60,10 +61,10 @@ function renderMarkdown(container, markdown) {
   }
 }
 
-function actionCard(title, description, actions, { id, onCompleted } = {}) {
+function actionCard(title, description, actions, { id, runId, onCompleted } = {}) {
   // Stream recovery can replay the same confirmation. One call ID represents
   // one decision, so never present it twice (or after it has been resolved).
-  if (id && (resolvedActionIds.has(id) || visibleActionCards.has(id))) return;
+  if (id && (resolvedActionIds.has(id) || visibleActionCards.has(id) || (runId && completedRunIds.has(runId)))) return;
   const card = document.createElement("section");
   card.className = "action-card";
   const label = document.createElement("p");
@@ -102,6 +103,17 @@ function actionCard(title, description, actions, { id, onCompleted } = {}) {
   thread.append(card);
   if (id) visibleActionCards.set(id, card);
   scrollToLatest();
+}
+
+function dismissCompletedRunActions(runId) {
+  if (!runId) return;
+  completedRunIds.add(runId);
+  for (const [id, card] of visibleActionCards) {
+    if (card.dataset.genieRunId !== runId) continue;
+    resolvedActionIds.add(id);
+    visibleActionCards.delete(id);
+    card.remove();
+  }
 }
 
 async function request(url, { method = "GET", body } = {}) {
@@ -198,7 +210,10 @@ function processEvent(event, assistant) {
     scrollToLatest();
   }
   if (event.type === "processing.started") setStatus("Thinking…", "working");
-  if (event.type === "processing.finished") setStatus("Ready");
+  if (event.type === "processing.finished") {
+    dismissCompletedRunActions(event.genie_run_id);
+    setStatus("Ready");
+  }
   if (event.type === "system.stream_interrupted") setStatus("Reconnecting…", "working");
   if (event.type === "skill.confirmation_required") {
     const pendingConversationId = conversationId;
@@ -206,7 +221,9 @@ function processEvent(event, assistant) {
     actionCard("Approve this action?", event.data.skill_name ? `Genie wants to use ${event.data.skill_name}.` : "Genie needs your confirmation to continue.", [
       { label: "Approve", run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "approved" }) },
       { label: "Decline", secondary: true, run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "rejected", rejectionReason: "Declined by user" }) }
-    ], { id: actionId, onCompleted: () => resumeRunAfterApproval(pendingConversationId, event.genie_run_id, event.event_id, assistant).catch(() => setStatus("Couldn’t continue that response", "error")) });
+    ], { id: actionId, runId: event.genie_run_id, onCompleted: () => resumeRunAfterApproval(pendingConversationId, event.genie_run_id, event.event_id, assistant).catch(() => setStatus("Couldn’t continue that response", "error")) });
+    const card = visibleActionCards.get(actionId);
+    if (card && event.genie_run_id) card.dataset.genieRunId = event.genie_run_id;
   }
   if (event.type === "runtime_connection.auth_required") {
     const attemptId = event.data.runtime_connection_attempt_id;
