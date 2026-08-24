@@ -84,6 +84,24 @@ test("throws a typed authentication error with the request ID", async () => {
   );
 });
 
+test("accepts the beta gateway result envelope", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => Response.json({ result: { conversation_id: "conversation" } })
+  });
+
+  assert.equal((await client.createConversation("genie")).conversation_id, "conversation");
+});
+
+test("accepts the beta gateway conversations collection name", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => Response.json({ result: { conversations: [{ conversation_id: "conversation" }], total_count: 1 } })
+  });
+
+  assert.equal((await client.listConversations("genie")).items[0].conversation_id, "conversation");
+});
+
 test("reconnects after an interrupted stream", async () => {
   const encoder = new TextEncoder();
   const requests = [];
@@ -118,6 +136,7 @@ test("covers conversation, event, approval, runtime connection, and upload opera
       if (requestUrl.pathname.endsWith("/messages") && init.method === "GET") return Response.json({ messages: [{ message_id: "m", source: "user", content: "hi" }], total_count: 1 });
       if (requestUrl.pathname.endsWith("/events")) return Response.json({ events: [{ type: "agent.message", event_id: "e", message: "hi" }], next_since_created_at: "next-event" });
       if (requestUrl.pathname.endsWith("/link")) return Response.json({ status: "authorized" });
+      if (/\/(skill_approval|business_approval)\/|\/feedback$|\/reject$/.test(requestUrl.pathname)) return new Response(null, { status: 204 });
       if (requestUrl.pathname.endsWith("/upload")) { assert.ok(init.body instanceof FormData); return Response.json({ file_id: "f" }); }
       if (requestUrl.pathname.endsWith("/c")) return Response.json({ conversation_id: "c", state: "idle" });
       return Response.json({});
@@ -130,12 +149,18 @@ test("covers conversation, event, approval, runtime connection, and upload opera
   assert.equal((await client.listMessages("genie", "c", { limit: 1 })).items[0].message_id, "m");
   assert.equal((await client.listEvents("genie", { conversationId: "c", sinceCreatedAt: "start", limit: 1 })).nextSinceCreatedAt, "next-event");
   await client.resolveSkillApproval("genie", "c", "call", "rejected", "no");
+  await client.resolveBusinessApproval("genie", "c", "business-call", "approved");
+  await client.submitFeedback("genie", "c", "run", "positive", "Useful");
   assert.equal((await client.getRuntimeConnectionLink("genie", "attempt")).status, "authorized");
   await client.rejectRuntimeConnection("genie", "attempt", "no");
   assert.equal(await client.uploadFile("genie", "c", new Blob(["hello"])), "f");
 
   const approval = requests.find((request) => request.path.includes("/skill_approval/"));
   assert.deepEqual(JSON.parse(approval.init.body), { resolution: "rejected", rejection_reason: "no" });
+  const businessApproval = requests.find((request) => request.path.includes("/business_approval/"));
+  assert.deepEqual(JSON.parse(businessApproval.init.body), { resolution: "approved" });
+  const feedback = requests.find((request) => request.path.endsWith("/feedback"));
+  assert.deepEqual(JSON.parse(feedback.init.body), { reaction: "positive", comment: "Useful" });
   const events = requests.find((request) => request.path.endsWith("/events"));
   assert.equal(events.query.get("conversation_id"), "c");
   assert.equal(events.query.get("since_created_at"), "start");

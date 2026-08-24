@@ -11,6 +11,12 @@ This repository contains independent Python and TypeScript packages. They provid
 - [`python/`](python/README.md) — `genie-api-sdk` / `genie_api_sdk`
 - [`typescript/`](typescript/README.md) — `genie-api-sdk`
 
+## Example application
+
+[`examples/web-chat/`](examples/web-chat/README.md) is a polished browser chat
+experience built on the TypeScript SDK. API credentials remain on the server;
+the browser receives only streamed conversation events.
+
 See the [developer guide](docs/developer-guide.md) for setup, authentication, core workflows, event handling, and local testing.
 
 ## Beta releases

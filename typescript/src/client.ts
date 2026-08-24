@@ -1,4 +1,4 @@
-import type { ClientOptions, Conversation, Event, EventData, Message, Page, Run, RuntimeConnectionLink, SkillResolution } from "./types.js";
+import type { ClientOptions, Conversation, Event, EventData, FeedbackReaction, Message, Page, Run, RuntimeConnectionLink, SkillResolution } from "./types.js";
 import type { Auth } from "./auth.js";
 
 const DEFAULT_BASE_URL = "https://genie-api.workato.com";
@@ -30,8 +30,8 @@ export class GenieClient {
   }
 
   async listConversations(genieHandle: string, options: { limit?: number; cursor?: string } = {}): Promise<Page<Conversation>> {
-    const data = await this.json<{ list: Conversation[]; total_count: number; cursor?: string }>("GET", this.path(genieHandle, "/conversations"), options);
-    return { items: data.list, totalCount: data.total_count, cursor: data.cursor };
+    const data = await this.json<{ list?: Conversation[]; conversations?: Conversation[]; total_count: number; cursor?: string }>("GET", this.path(genieHandle, "/conversations"), options);
+    return { items: data.list ?? data.conversations ?? [], totalCount: data.total_count, cursor: data.cursor };
   }
 
   createConversation(genieHandle: string): Promise<Conversation> {
@@ -106,6 +106,14 @@ export class GenieClient {
     await this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/skill_approval/${this.id(callId)}`), undefined, { resolution, rejection_reason: rejectionReason });
   }
 
+  async resolveBusinessApproval(genieHandle: string, conversationId: string, callId: string, resolution: SkillResolution, rejectionReason?: string): Promise<void> {
+    await this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/business_approval/${this.id(callId)}`), undefined, { resolution, rejection_reason: rejectionReason });
+  }
+
+  async submitFeedback(genieHandle: string, conversationId: string, genieRunId: string, reaction: FeedbackReaction, comment?: string): Promise<void> {
+    await this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/genie-runs/${this.id(genieRunId)}/feedback`), undefined, { reaction, comment });
+  }
+
   getRuntimeConnectionLink(genieHandle: string, attemptId: string): Promise<RuntimeConnectionLink> {
     return this.json("POST", this.path(genieHandle, `/runtime_connection/${this.id(attemptId)}/link`));
   }
@@ -117,7 +125,7 @@ export class GenieClient {
   async uploadFile(genieHandle: string, conversationId: string, file: Blob): Promise<string> {
     const form = new FormData(); form.append("file", file);
     const response = await this.request("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/upload`), undefined, form);
-    return (await response.json() as { file_id: string }).file_id;
+    return unwrapResult(await response.json() as Record<string, unknown>).file_id as string;
   }
 
   private id(value: string): string { return encodeURIComponent(value); }
@@ -125,7 +133,8 @@ export class GenieClient {
 
   private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown, signal?: AbortSignal): Promise<T> {
     const response = await this.request(method, path, params, body, undefined, signal);
-    return response.json() as Promise<T>;
+    if (response.status === 204) return undefined as T;
+    return unwrapResult(await response.json() as Record<string, unknown>) as T;
   }
 
   private async request(method: string, path: string, params?: Record<string, unknown>, body?: unknown, extraHeaders?: HeadersInit, signal?: AbortSignal): Promise<Response> {
@@ -189,6 +198,13 @@ export class GenieClient {
       sinceCreatedAt = data.next_since_created_at;
     }
   }
+}
+
+/** Accept the documented response body and the `{ result: ... }` envelope used by beta gateways. */
+function unwrapResult(value: Record<string, unknown>): Record<string, unknown> {
+  return value.result && typeof value.result === "object" && !Array.isArray(value.result)
+    ? value.result as Record<string, unknown>
+    : value;
 }
 
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {

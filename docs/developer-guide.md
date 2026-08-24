@@ -105,6 +105,8 @@ for await (const event of client.streamMessage(handle, conversation.conversation
 
 Call `send_message` / `sendMessage` when you want the asynchronous `Run` response instead of holding an SSE connection. Persist its `genie_run_id`; it lets you reconnect after a disconnect.
 
+The SDK accepts both the documented response body and the `{ "result": ... }` envelope emitted by some beta gateway deployments, including the beta gateway's `conversations` collection name for conversation lists.
+
 ## SSE event handling and recovery
 
 Streams end normally with `processing.finished`. Ignore `system.ping`. Treat `system.stream_interrupted` as a recovery signal, not a failed turn.
@@ -142,6 +144,8 @@ await client.resolveSkillApproval(handle, conversationId, callId, "approved");
 
 When receiving `runtime_connection.auth_required`, call `get_runtime_connection_link` / `getRuntimeConnectionLink` with the event's `runtime_connection_attempt_id`; present the returned authentication link to the user. If they decline, call `reject_runtime_connection` / `rejectRuntimeConnection`.
 
+Use `resolve_business_approval` / `resolveBusinessApproval` for a business-approval `call_id`, with the same `approved` or `rejected` resolution. After a completed run, submit an optional rating with `submit_feedback` / `submitFeedback` using `positive` or `negative` and, optionally, a comment.
+
 ## Files and history
 
 Upload a file first, then pass its returned `file_id` / `fileId` to `stream_message` / `streamMessage` or `send_message` / `sendMessage`. File size is limited by Workato (currently 20 MB).
@@ -159,6 +163,19 @@ cd typescript && npm run check && npm test
 ```
 
 The test suite must not call the live Workato service. Use `httpx.MockTransport` in Python and injected `fetch` implementations in TypeScript.
+
+## Example application and real API smoke test
+
+The [web chat example](../examples/web-chat/README.md) is a responsive,
+end-user-facing interface built on the TypeScript SDK. Its Node.js server holds
+the API key and streams SDK events to the browser. It makes skill confirmation
+and runtime-connection authorization explicit user actions instead of
+automatically accepting either.
+
+`examples/web-chat/e2e-smoke.mjs` is deliberately excluded from CI. It starts
+the sample server and only contacts a workspace when `GENIE_E2E=1` and the
+`WORKATO_API_KEY`, `WORKATO_IDP_USER_ID`, and `WORKATO_GENIE_HANDLE`
+environment variables are set. Run it only against a non-production workspace.
 
 ## Async Python
 
