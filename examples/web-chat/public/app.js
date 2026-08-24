@@ -5,6 +5,9 @@ const input = document.querySelector("#message");
 const sendButton = document.querySelector("#send");
 const connection = document.querySelector("#connection");
 const newChat = document.querySelector("#new-chat");
+let suggestions = document.querySelector("#suggestions");
+const conversationList = document.querySelector("#conversation-list");
+const historyStatus = document.querySelector("#history-status");
 function storedConversationId() {
   const id = localStorage.getItem("genie-conversation-id");
   // Older versions could persist the literal string "undefined" when a beta
@@ -25,6 +28,7 @@ function setStatus(text, state = "ready") {
 
 function messageCard(role, text = "") {
   emptyState?.remove();
+  suggestions?.remove();
   const card = document.createElement("article");
   card.className = `message ${role}`;
   const label = document.createElement("p");
@@ -37,6 +41,65 @@ function messageCard(role, text = "") {
   thread.append(card);
   card.scrollIntoView({ behavior: "smooth", block: "end" });
   return content;
+}
+
+function appendInlineMarkdown(element, text) {
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+  let position = 0;
+  for (const match of text.matchAll(pattern)) {
+    element.append(document.createTextNode(text.slice(position, match.index)));
+    const token = match[0];
+    if (token.startsWith("**")) {
+      const strong = document.createElement("strong");
+      strong.textContent = token.slice(2, -2);
+      element.append(strong);
+    } else if (token.startsWith("`")) {
+      const code = document.createElement("code");
+      code.textContent = token.slice(1, -1);
+      element.append(code);
+    } else {
+      const [, label, href] = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/) ?? [];
+      const link = document.createElement("a");
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = label;
+      element.append(link);
+    }
+    position = (match.index ?? 0) + token.length;
+  }
+  element.append(document.createTextNode(text.slice(position)));
+}
+
+function renderMarkdown(container, markdown) {
+  container.replaceChildren();
+  const blocks = String(markdown).trim().split(/\n{2,}/);
+  for (const block of blocks) {
+    let element;
+    if (block.startsWith("```") && block.endsWith("```")) {
+      element = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "");
+      element.append(code);
+    } else if (/^#{1,3}\s+/.test(block)) {
+      const [, hashes, text] = block.match(/^(#{1,3})\s+([\s\S]*)$/) ?? [];
+      element = document.createElement(`h${hashes.length + 1}`);
+      appendInlineMarkdown(element, text);
+    } else if (/^[-*]\s+/.test(block) || /^\d+\.\s+/.test(block)) {
+      const ordered = /^\d+\.\s+/.test(block);
+      element = document.createElement(ordered ? "ol" : "ul");
+      for (const line of block.split("\n")) {
+        const item = line.replace(ordered ? /^\d+\.\s+/ : /^[-*]\s+/, "");
+        const li = document.createElement("li");
+        appendInlineMarkdown(li, item);
+        element.append(li);
+      }
+    } else {
+      element = document.createElement("p");
+      appendInlineMarkdown(element, block);
+    }
+    container.append(element);
+  }
 }
 
 function actionCard(title, description, actions) {
@@ -68,10 +131,69 @@ function actionCard(title, description, actions) {
   card.scrollIntoView({ behavior: "smooth", block: "end" });
 }
 
-async function json(url, body) {
-  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
+async function request(url, { method = "GET", body } = {}) {
+  const response = await fetch(url, { method, headers: body === undefined ? {} : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? "Request failed");
   return response.status === 204 ? undefined : response.json();
+}
+
+function json(url, body) { return request(url, { method: "POST", body }); }
+
+function titleFor(conversation) {
+  return conversation.topic?.trim() || "Untitled conversation";
+}
+
+function renderConversationList(conversations) {
+  conversationList.replaceChildren();
+  if (!conversations.length) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = "No previous chats yet.";
+    conversationList.append(empty);
+    return;
+  }
+  for (const conversation of conversations) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "conversation-item";
+    button.dataset.active = String(conversation.conversation_id === conversationId);
+    const title = document.createElement("span");
+    title.textContent = titleFor(conversation);
+    const time = document.createElement("small");
+    time.textContent = conversation.last_updated_at ? new Date(conversation.last_updated_at).toLocaleDateString() : "";
+    button.append(title, time);
+    button.addEventListener("click", () => selectConversation(conversation.conversation_id));
+    conversationList.append(button);
+  }
+}
+
+async function refreshConversations() {
+  try {
+    const page = await request("/api/conversations");
+    renderConversationList(page.items ?? []);
+  } catch {
+    historyStatus.textContent = "Couldn’t load recent chats";
+  }
+}
+
+async function selectConversation(id) {
+  conversationId = id;
+  localStorage.setItem("genie-conversation-id", id);
+  setStatus("Loading chat…", "working");
+  try {
+    const page = await request(`/api/conversations/${encodeURIComponent(id)}/messages`);
+    thread.replaceChildren();
+    suggestions?.remove();
+    for (const message of (page.items ?? []).slice().reverse()) {
+      const content = messageCard(message.source === "genie" ? "assistant" : "user", message.content ?? "");
+      if (message.source === "genie") renderMarkdown(content, message.content ?? "");
+    }
+    if (!(page.items ?? []).length) thread.append(Object.assign(document.createElement("p"), { className: "history-empty", textContent: "This conversation has no messages yet." }));
+    setStatus("Ready");
+    await refreshConversations();
+  } catch {
+    setStatus("Couldn’t load that chat", "error");
+  }
 }
 
 async function ensureConversation() {
@@ -79,11 +201,12 @@ async function ensureConversation() {
   const conversation = await json("/api/conversations");
   conversationId = conversation.conversation_id;
   localStorage.setItem("genie-conversation-id", conversationId);
+  await refreshConversations();
   return conversationId;
 }
 
 function processEvent(event, assistant) {
-  if (event.type === "agent.message") assistant.textContent = event.data.message ?? "";
+  if (event.type === "agent.message") renderMarkdown(assistant, event.data.message ?? "");
   if (event.type === "processing.started") setStatus("Thinking…", "working");
   if (event.type === "processing.finished") setStatus("Ready");
   if (event.type === "system.stream_interrupted") setStatus("Reconnecting…", "working");
@@ -141,9 +264,7 @@ composer.addEventListener("submit", async (event) => {
 newChat.addEventListener("click", () => {
   localStorage.removeItem("genie-conversation-id");
   conversationId = null;
-  thread.replaceChildren(Object.assign(document.createElement("div"), { id: "empty-state", className: "empty-state", innerHTML: "<div class=\"sparkle\">✦</div><h2>Start a focused conversation</h2><p>Genie will keep the context while you work together.</p>" }));
-  setStatus("Ready");
-  input.focus();
+  window.location.reload();
 });
 
 input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 160)}px`; });
@@ -153,4 +274,10 @@ input.addEventListener("keydown", (event) => {
     composer.requestSubmit();
   }
 });
+document.querySelectorAll("[data-prompt]").forEach((button) => button.addEventListener("click", () => {
+  input.value = button.dataset.prompt;
+  composer.requestSubmit();
+}));
+refreshConversations();
+if (conversationId) selectConversation(conversationId);
 input.focus();

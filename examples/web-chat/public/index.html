@@ -17,14 +17,23 @@
         <h1 id="welcome-title">What can we make easier today?</h1>
         <p>Ask a question, explore an idea, or hand off a task. Your conversation stays right here.</p>
       </section>
+      <section class="recent-chats" aria-labelledby="recent-chats-title">
+        <div class="recent-chats-heading"><h2 id="recent-chats-title">Recent chats</h2><span id="history-status" aria-live="polite"></span></div>
+        <div id="conversation-list" class="conversation-list"><p class="history-empty">Loading your conversations…</p></div>
+      </section>
       <section id="thread" class="thread" aria-live="polite" aria-label="Conversation">
-        <div class="empty-state" id="empty-state"><div class="sparkle">✦</div><h2>Start a focused conversation</h2><p>Genie will keep the context while you work together.</p></div>
+        <div class="empty-state" id="empty-state"><div class="sparkle">✦</div><h2>Start a focused conversation</h2><p>Choose a prompt or write your own. Genie keeps the context while you work together.</p></div>
+        <div id="suggestions" class="suggestions" aria-label="Suggested prompts">
+          <button type="button" data-prompt="Help me plan the next steps for my project."><span>Plan</span> Map next steps</button>
+          <button type="button" data-prompt="Summarize the key information I should know."><span>Summarize</span> Get the essentials</button>
+          <button type="button" data-prompt="Help me explore options and make a decision."><span>Explore</span> Think through options</button>
+        </div>
       </section>
       <form id="composer" class="composer">
         <label class="sr-only" for="message">Message Genie</label>
         <textarea id="message" rows="1" maxlength="12288" placeholder="Message Genie…" required></textarea>
         <button id="send" class="send-button" type="submit" aria-label="Send message">↑</button>
-        <p class="composer-note">Genie can make mistakes. Review important actions before approving them.</p>
+        <p class="composer-note"><kbd>Enter</kbd> to send · <kbd>Shift + Enter</kbd> for a new line · Review important actions before approving them.</p>
       </form>
     </main>
     <script type="module" src="/app.js"></script>

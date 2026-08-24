@@ -24,6 +24,14 @@ test("composer sends on Enter and preserves Shift+Enter for a new line", async (
   assert.match(script, /id === "undefined" \|\| id === "null"/);
 });
 
+test("renders Genie Markdown with DOM nodes rather than injected HTML", async () => {
+  const script = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(script, /function renderMarkdown/);
+  assert.match(script, /document\.createElement\("strong"\)/);
+  assert.match(script, /renderMarkdown\(assistant, event\.data\.message/);
+  assert.doesNotMatch(script, /innerHTML\s*=\s*markdown/);
+});
+
 test("serves the chat UI and rejects an empty message before calling the API", async () => {
   const server = createApp(environment);
   server.listen(0, "127.0.0.1");
@@ -41,4 +49,10 @@ test("serves the chat UI and rejects an empty message before calling the API", a
     server.close();
     await once(server, "close");
   }
+});
+
+test("exposes server-side conversation history routes", async () => {
+  const source = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+  assert.match(source, /client\.listConversations\(config\.genieHandle\)/);
+  assert.match(source, /client\.listMessages\(config\.genieHandle, decodeURIComponent\(historyRoute\[1\]\)\)/);
 });

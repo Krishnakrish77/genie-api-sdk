@@ -93,6 +93,15 @@ export function createApp(environment = loadEnvironmentFile()) {
         return sendJson(response, 201, conversation);
       }
 
+      if (request.method === "GET" && url.pathname === "/api/conversations") {
+        return sendJson(response, 200, await client.listConversations(config.genieHandle));
+      }
+
+      const historyRoute = url.pathname.match(/^\/api\/conversations\/([^/]+)\/messages$/);
+      if (request.method === "GET" && historyRoute) {
+        return sendJson(response, 200, await client.listMessages(config.genieHandle, decodeURIComponent(historyRoute[1])));
+      }
+
       const messageRoute = url.pathname.match(/^\/api\/conversations\/([^/]+)\/messages$/);
       if (request.method === "POST" && messageRoute) {
         const { message } = await readJson(request);
