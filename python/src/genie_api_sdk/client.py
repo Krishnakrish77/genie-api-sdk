@@ -61,7 +61,7 @@ class GenieClient:
 
     def list_conversations(self, genie_handle: str, *, limit: Optional[int] = None, cursor: Optional[str] = None) -> Page[Conversation]:
         data = self._data(self._safe_get(self._path(genie_handle, "/conversations"), params={"limit": limit, "cursor": cursor}))
-        return Page([Conversation.from_dict(item) for item in data["list"]], data["total_count"], data.get("cursor"))
+        return Page([Conversation.from_dict(item) for item in data.get("list", data.get("conversations", []))], data["total_count"], data.get("cursor"))
 
     def create_conversation(self, genie_handle: str) -> Conversation:
         data = self._data(raise_for_status(self._client.post(self._path(genie_handle, "/conversations"), headers=self._headers())))

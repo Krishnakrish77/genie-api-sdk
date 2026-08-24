@@ -93,6 +93,15 @@ test("accepts the beta gateway result envelope", async () => {
   assert.equal((await client.createConversation("genie")).conversation_id, "conversation");
 });
 
+test("accepts the beta gateway conversations collection name", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => Response.json({ result: { conversations: [{ conversation_id: "conversation" }], total_count: 1 } })
+  });
+
+  assert.equal((await client.listConversations("genie")).items[0].conversation_id, "conversation");
+});
+
 test("reconnects after an interrupted stream", async () => {
   const encoder = new TextEncoder();
   const requests = [];

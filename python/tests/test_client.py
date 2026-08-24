@@ -66,6 +66,14 @@ def test_clients_accept_the_beta_gateway_result_envelope():
     assert asyncio.run(run()).conversation_id == "conversation"
 
 
+def test_clients_accept_the_beta_gateway_conversations_collection():
+    def handler(_request):
+        return httpx.Response(200, json={"result": {"conversations": [{"conversation_id": "conversation"}], "total_count": 1}})
+
+    client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    assert client.list_conversations("genie").items[0].conversation_id == "conversation"
+
+
 def test_recovery_reconnects_from_last_event_and_returns_typed_events():
     requests = []
 

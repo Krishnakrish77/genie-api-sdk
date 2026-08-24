@@ -30,8 +30,8 @@ export class GenieClient {
   }
 
   async listConversations(genieHandle: string, options: { limit?: number; cursor?: string } = {}): Promise<Page<Conversation>> {
-    const data = await this.json<{ list: Conversation[]; total_count: number; cursor?: string }>("GET", this.path(genieHandle, "/conversations"), options);
-    return { items: data.list, totalCount: data.total_count, cursor: data.cursor };
+    const data = await this.json<{ list?: Conversation[]; conversations?: Conversation[]; total_count: number; cursor?: string }>("GET", this.path(genieHandle, "/conversations"), options);
+    return { items: data.list ?? data.conversations ?? [], totalCount: data.total_count, cursor: data.cursor };
   }
 
   createConversation(genieHandle: string): Promise<Conversation> {
