@@ -24,6 +24,8 @@ Open the printed localhost URL in your browser. The application automatically
 loads its local `.env` file at startup, while real deployment environment
 variables take precedence.
 
+Press Enter to send a message; use Shift+Enter for a new line.
+
 Set `WORKATO_BASE_URL` only for another Workato data center or a test server.
 Do not expose the API key to browser code or commit `.env`.
 

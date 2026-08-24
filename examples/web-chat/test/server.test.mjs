@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { once } from "node:events";
+import { readFile } from "node:fs/promises";
 
 import { applyDotEnv, configuration, createApp } from "../server.mjs";
 
@@ -14,6 +15,12 @@ test("loads .env values without overriding deployment environment variables", ()
   const environment = { PORT: "9090" };
   applyDotEnv("WORKATO_API_KEY='key with spaces'\nPORT=3000 # ignored\nWORKATO_IDP_USER_ID=user\nWORKATO_GENIE_HANDLE=genie", environment);
   assert.deepEqual(environment, { WORKATO_API_KEY: "key with spaces", WORKATO_IDP_USER_ID: "user", WORKATO_GENIE_HANDLE: "genie", PORT: "9090" });
+});
+
+test("composer sends on Enter and preserves Shift+Enter for a new line", async () => {
+  const script = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(script, /event\.key === "Enter" && !event\.shiftKey && !event\.isComposing/);
+  assert.match(script, /composer\.requestSubmit\(\)/);
 });
 
 test("serves the chat UI and rejects an empty message before calling the API", async () => {
