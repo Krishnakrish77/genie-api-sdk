@@ -75,6 +75,8 @@ test("exposes server-side conversation history routes", async () => {
   assert.match(source, /client\.listConversations\(config\.genieHandle\)/);
   assert.match(source, /client\.listMessages\(config\.genieHandle, decodeURIComponent\(historyRoute\[1\]\)\)/);
   assert.doesNotMatch(source, /\/resume\$/);
+  assert.match(source, /client\.getConversation\(config\.genieHandle, conversationId\)/);
+  assert.match(source, /conversation\.state !== "idle"/);
 });
 
 test("OAuth login stores the PKCE request, accepts its callback, and rejects a callback after a restart", async () => {

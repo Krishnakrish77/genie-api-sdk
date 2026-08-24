@@ -170,9 +170,12 @@ export function createApp(environment = loadEnvironmentFile(), { oauthPkce } = {
       if (request.method === "POST" && messageRoute) {
         const { message } = await readJson(request);
         if (typeof message !== "string" || !message.trim()) return sendJson(response, 400, { error: "message is required" });
+        const conversationId = decodeURIComponent(messageRoute[1]);
+        const conversation = await client.getConversation(config.genieHandle, conversationId);
+        if (conversation.state !== "idle") return sendJson(response, 409, { error: "This conversation is still processing. Wait for it to become idle before sending another message." });
         response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" });
         try {
-          for await (const event of client.streamMessage(config.genieHandle, decodeURIComponent(messageRoute[1]), message.trim())) streamEvent(response, event);
+          for await (const event of client.streamMessage(config.genieHandle, conversationId, message.trim())) streamEvent(response, event);
         } catch (error) {
           streamEvent(response, { type: "error", data: { message: "The response stream failed. Please try again." }, status: statusFor(error) });
         }
