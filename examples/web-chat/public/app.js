@@ -11,6 +11,8 @@ const newChat = document.querySelector("#new-chat");
 let suggestions = document.querySelector("#suggestions");
 const conversationList = document.querySelector("#conversation-list");
 const historyStatus = document.querySelector("#history-status");
+const resolvedActionIds = new Set();
+const visibleActionCards = new Map();
 // Opening the app always starts a new canvas. People opt into resuming a
 // server-side conversation from the sidebar, just as they do in chat apps.
 let conversationId = null;
@@ -58,7 +60,10 @@ function renderMarkdown(container, markdown) {
   }
 }
 
-function actionCard(title, description, actions) {
+function actionCard(title, description, actions, { id, onCompleted } = {}) {
+  // Stream recovery can replay the same confirmation. One call ID represents
+  // one decision, so never present it twice (or after it has been resolved).
+  if (id && (resolvedActionIds.has(id) || visibleActionCards.has(id))) return;
   const card = document.createElement("section");
   card.className = "action-card";
   const label = document.createElement("p");
@@ -76,14 +81,26 @@ function actionCard(title, description, actions) {
     button.className = action.secondary ? "secondary-action" : "primary-action";
     button.textContent = action.label;
     button.addEventListener("click", async () => {
-      button.disabled = true;
-      try { await action.run(); card.remove(); setStatus("Ready"); }
-      catch { button.disabled = false; setStatus("Couldn’t complete that action", "error"); }
+      for (const control of controls.querySelectorAll("button")) control.disabled = true;
+      try {
+        await action.run();
+        if (id) {
+          resolvedActionIds.add(id);
+          visibleActionCards.delete(id);
+        }
+        card.remove();
+        setStatus("Ready");
+        void onCompleted?.();
+      } catch {
+        for (const control of controls.querySelectorAll("button")) control.disabled = false;
+        setStatus("Couldn’t complete that action", "error");
+      }
     });
     controls.append(button);
   }
   card.append(controls);
   thread.append(card);
+  if (id) visibleActionCards.set(id, card);
   scrollToLatest();
 }
 
@@ -138,18 +155,40 @@ async function selectConversation(id) {
   setStatus("Loading chat…", "working");
   try {
     const page = await request(`/api/conversations/${encodeURIComponent(id)}/messages`);
-    thread.replaceChildren();
-    suggestions?.remove();
-    for (const message of (page.items ?? []).slice().reverse()) {
-      const content = messageCard(message.source === "genie" ? "assistant" : "user", message.content ?? "");
-      if (message.source === "genie") renderMarkdown(content, message.content ?? "");
-    }
-    if (!(page.items ?? []).length) thread.append(Object.assign(document.createElement("p"), { className: "history-empty", textContent: "This conversation has no messages yet." }));
-    scrollToLatest(true);
+    renderConversationMessages(page);
     setStatus("Ready");
     await refreshConversations();
   } catch {
     setStatus("Couldn’t load that chat", "error");
+  }
+}
+
+function renderConversationMessages(page) {
+  thread.replaceChildren();
+  suggestions?.remove();
+  for (const message of (page.items ?? []).slice().reverse()) {
+    const content = messageCard(message.source === "genie" ? "assistant" : "user", message.content ?? "");
+    if (message.source === "genie") renderMarkdown(content, message.content ?? "");
+  }
+  if (!(page.items ?? []).length) thread.append(Object.assign(document.createElement("p"), { className: "history-empty", textContent: "This conversation has no messages yet." }));
+  scrollToLatest(true);
+}
+
+async function refreshConversationAfterApproval(id) {
+  // Resolving an approval is a separate HTTP request. The paused response can
+  // finish after the original SSE stream closes, so refresh history briefly
+  // rather than requiring a page reload to reveal the completed action.
+  let previousSnapshot;
+  for (let attempt = 0; attempt < 35 && conversationId === id; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    try {
+      const page = await request(`/api/conversations/${encodeURIComponent(id)}/messages`);
+      const snapshot = JSON.stringify(page.items ?? []);
+      if (conversationId === id && snapshot !== previousSnapshot) renderConversationMessages(page);
+      previousSnapshot = snapshot;
+    } catch {
+      // A later poll may succeed while the completed turn is being persisted.
+    }
   }
 }
 
@@ -171,10 +210,12 @@ function processEvent(event, assistant) {
   if (event.type === "processing.finished") setStatus("Ready");
   if (event.type === "system.stream_interrupted") setStatus("Reconnecting…", "working");
   if (event.type === "skill.confirmation_required") {
+    const pendingConversationId = conversationId;
+    const actionId = `skill:${pendingConversationId}:${event.data.call_id}`;
     actionCard("Approve this action?", event.data.skill_name ? `Genie wants to use ${event.data.skill_name}.` : "Genie needs your confirmation to continue.", [
-      { label: "Approve", run: () => json("/api/skill-approvals", { conversationId, callId: event.data.call_id, resolution: "approved" }) },
-      { label: "Decline", secondary: true, run: () => json("/api/skill-approvals", { conversationId, callId: event.data.call_id, resolution: "rejected", rejectionReason: "Declined by user" }) }
-    ]);
+      { label: "Approve", run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "approved" }) },
+      { label: "Decline", secondary: true, run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "rejected", rejectionReason: "Declined by user" }) }
+    ], { id: actionId, onCompleted: () => refreshConversationAfterApproval(pendingConversationId) });
   }
   if (event.type === "runtime_connection.auth_required") {
     const attemptId = event.data.runtime_connection_attempt_id;

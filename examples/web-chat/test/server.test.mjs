@@ -30,6 +30,10 @@ test("composer sends on Enter and preserves Shift+Enter for a new line", async (
   assert.match(script, /let conversationId = null/);
   assert.match(script, /function scrollToLatest/);
   assert.match(script, /scrollToLatest\(true\)/);
+  assert.match(script, /const resolvedActionIds = new Set\(\)/);
+  assert.match(script, /const visibleActionCards = new Map\(\)/);
+  assert.match(script, /refreshConversationAfterApproval/);
+  assert.match(script, /skill:\$\{pendingConversationId\}:\$\{event\.data\.call_id\}/);
 });
 
 test("renders Genie Markdown with a maintained parser and sanitizer", async () => {
