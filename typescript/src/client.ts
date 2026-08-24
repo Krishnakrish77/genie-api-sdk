@@ -133,6 +133,7 @@ export class GenieClient {
 
   private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown, signal?: AbortSignal): Promise<T> {
     const response = await this.request(method, path, params, body, undefined, signal);
+    if (response.status === 204) return undefined as T;
     return unwrapResult(await response.json() as Record<string, unknown>) as T;
   }
 

@@ -136,6 +136,7 @@ test("covers conversation, event, approval, runtime connection, and upload opera
       if (requestUrl.pathname.endsWith("/messages") && init.method === "GET") return Response.json({ messages: [{ message_id: "m", source: "user", content: "hi" }], total_count: 1 });
       if (requestUrl.pathname.endsWith("/events")) return Response.json({ events: [{ type: "agent.message", event_id: "e", message: "hi" }], next_since_created_at: "next-event" });
       if (requestUrl.pathname.endsWith("/link")) return Response.json({ status: "authorized" });
+      if (/\/(skill_approval|business_approval)\/|\/feedback$|\/reject$/.test(requestUrl.pathname)) return new Response(null, { status: 204 });
       if (requestUrl.pathname.endsWith("/upload")) { assert.ok(init.body instanceof FormData); return Response.json({ file_id: "f" }); }
       if (requestUrl.pathname.endsWith("/c")) return Response.json({ conversation_id: "c", state: "idle" });
       return Response.json({});
