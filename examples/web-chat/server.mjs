@@ -1,15 +1,33 @@
 import { createServer } from "node:http";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { ApiKeyAuth, GenieClient } from "../../typescript/dist/index.js";
+import { ApiKeyAuth, GenieClient } from "genie-api-sdk";
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIRECTORY = join(DIRECTORY, "public");
 const CONTENT_TYPES = { ".css": "text/css; charset=utf-8", ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
 
-export function configuration(environment = process.env) {
+export function applyDotEnv(contents, environment) {
+  for (const line of contents.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!match || Object.hasOwn(environment, match[1])) continue;
+    let value = match[2];
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+    else value = value.replace(/\s+#.*$/, "");
+    environment[match[1]] = value;
+  }
+  return environment;
+}
+
+export function loadEnvironmentFile(environment = process.env, file = join(DIRECTORY, ".env")) {
+  if (existsSync(file)) applyDotEnv(readFileSync(file, "utf8"), environment);
+  return environment;
+}
+
+export function configuration(environment = loadEnvironmentFile()) {
   const required = ["WORKATO_API_KEY", "WORKATO_IDP_USER_ID", "WORKATO_GENIE_HANDLE"];
   const missing = required.filter((name) => !environment[name]);
   if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
@@ -61,7 +79,7 @@ function streamEvent(response, event) {
   response.write(`event: genie\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
-export function createApp(environment = process.env) {
+export function createApp(environment = loadEnvironmentFile()) {
   const config = configuration(environment);
   const client = new GenieClient({ auth: config.auth, baseUrl: config.baseUrl });
   return createServer(async (request, response) => {
@@ -111,7 +129,7 @@ export function createApp(environment = process.env) {
   });
 }
 
-export function startServer(environment = process.env) {
+export function startServer(environment = loadEnvironmentFile()) {
   const port = Number(environment.PORT ?? 3000);
   const server = createApp(environment);
   server.listen(port, "127.0.0.1", () => {

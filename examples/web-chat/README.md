@@ -14,19 +14,26 @@ workspace:
 
 ```sh
 cd examples/web-chat
+npm install
 cp .env.example .env
-# Edit .env with your non-production values, then load it into this shell.
-set -a && source .env && set +a
+# Edit .env with your non-production values.
 npm start
 ```
 
-Open the printed localhost URL in your browser. `npm start` first builds the
-local TypeScript SDK, then starts the example server.
+Open the printed localhost URL in your browser. The application automatically
+loads its local `.env` file at startup, while real deployment environment
+variables take precedence.
 
 Set `WORKATO_BASE_URL` only for another Workato data center or a test server.
-The server does not load `.env` automatically, so the explicit shell command
-keeps the example dependency-free. Do not expose the API key to browser code or
-commit `.env`.
+Do not expose the API key to browser code or commit `.env`.
+
+Until the beta package is published, run this copy from the repository by
+building and installing the local SDK once:
+
+```sh
+(cd ../../typescript && npm ci && npm run build)
+npm install --no-save --no-package-lock ../../typescript
+```
 
 ## Tests
 

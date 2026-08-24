@@ -86,4 +86,7 @@ jobs:
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
         working-directory: typescript
+      - run: npm run build
+        working-directory: typescript
+      - run: npm install --no-save --no-package-lock ../../typescript
       - run: npm test

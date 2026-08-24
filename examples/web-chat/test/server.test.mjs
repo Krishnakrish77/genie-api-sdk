@@ -2,12 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { once } from "node:events";
 
-import { configuration, createApp } from "../server.mjs";
+import { applyDotEnv, configuration, createApp } from "../server.mjs";
 
 const environment = { WORKATO_API_KEY: "key", WORKATO_IDP_USER_ID: "user", WORKATO_GENIE_HANDLE: "genie" };
 
 test("requires server-side credentials", () => {
   assert.throws(() => configuration({}), /WORKATO_API_KEY/);
+});
+
+test("loads .env values without overriding deployment environment variables", () => {
+  const environment = { PORT: "9090" };
+  applyDotEnv("WORKATO_API_KEY='key with spaces'\nPORT=3000 # ignored\nWORKATO_IDP_USER_ID=user\nWORKATO_GENIE_HANDLE=genie", environment);
+  assert.deepEqual(environment, { WORKATO_API_KEY: "key with spaces", WORKATO_IDP_USER_ID: "user", WORKATO_GENIE_HANDLE: "genie", PORT: "9090" });
 });
 
 test("serves the chat UI and rejects an empty message before calling the API", async () => {
