@@ -27,7 +27,7 @@ Never commit API keys, access tokens, or end-user IDs.
 
 ### Python
 
-Python 3.9 or later is required.
+Python 3.10 or later is required.
 
 ```sh
 python -m pip install genie-api-sdk
@@ -35,7 +35,7 @@ python -m pip install genie-api-sdk
 
 ### TypeScript
 
-Node.js 18 or later is required.
+Node.js 20.19 or later is required.
 
 ```sh
 npm install genie-api-sdk
@@ -63,6 +63,30 @@ const oauthClient = new GenieClient({ auth: new OAuthAuth(() => currentAccessTok
 ```
 
 Use `base_url` (Python) or `baseUrl` (TypeScript) only when targeting a different Workato data center or a test server.
+
+### OAuth PKCE
+
+For an OAuth browser flow, use `OAuthPkce` rather than implementing the protocol in your application. It is a public-client helper: it generates a state and S256 verifier, validates state before exchanging the callback, and never sends a client secret. Store the returned login request and tokens in your own protected session or database.
+
+```ts
+import { OAuthPkce } from "genie-api-sdk";
+
+const oauth = new OAuthPkce({ clientId, redirectUri }); // Production US identity by default
+const login = await oauth.createAuthorizationRequest(); // persist login; redirect to login.authorizationUrl
+const tokens = await oauth.exchangeCallback(callbackUrl, login); // persist tokens
+const auth = oauth.refreshableAuth(loadTokens, persistTokens);
+```
+
+```python
+from genie_api_sdk import OAuthPkce
+
+oauth = OAuthPkce(client_id=client_id, redirect_uri=redirect_uri)  # Production US identity by default
+login = oauth.create_authorization_request()  # persist login; redirect to login.authorization_url
+tokens = oauth.exchange_callback(callback_url, login)  # persist tokens
+auth = oauth.refreshable_auth(load_tokens=load_tokens, persist_tokens=persist_tokens)
+```
+
+For Preview or a custom identity environment, pass `identityBaseUrl` / `identity_base_url` (for example, `https://id.preview.workato.com`). The redirect URI must exactly match the OAuth Genie client configuration.
 
 For rotating OAuth refresh tokens, use `RefreshableOAuthAuth` (or `AsyncRefreshableOAuthAuth`). Your application supplies `load_tokens` and a single `refresh_and_persist` transaction; the latter must use a distributed lock or compare-and-swap when multiple processes share token storage. It must return the persisted winning token set. The SDK serializes refreshes within one client instance but never stores credentials itself. The token provider is consulted for every request and stream reconnection.
 

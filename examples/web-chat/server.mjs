@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { ApiKeyAuth, GenieClient } from "genie-api-sdk";
+import { ApiKeyAuth, GenieClient, OAuthPkce } from "genie-api-sdk";
+import { randomUUID } from "node:crypto";
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIRECTORY = join(DIRECTORY, "public");
@@ -32,13 +33,22 @@ export function loadEnvironmentFile(environment = process.env, file = join(DIREC
 }
 
 export function configuration(environment = loadEnvironmentFile()) {
-  const required = ["WORKATO_API_KEY", "WORKATO_IDP_USER_ID", "WORKATO_GENIE_HANDLE"];
+  const isOAuth = Boolean(environment.WORKATO_OAUTH_CLIENT_ID);
+  const required = isOAuth
+    ? ["WORKATO_OAUTH_CLIENT_ID", "WORKATO_OAUTH_REDIRECT_URI", "WORKATO_GENIE_HANDLE"]
+    : ["WORKATO_API_KEY", "WORKATO_IDP_USER_ID", "WORKATO_GENIE_HANDLE"];
   const missing = required.filter((name) => !environment[name]);
   if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
   return {
-    auth: new ApiKeyAuth(environment.WORKATO_API_KEY, environment.WORKATO_IDP_USER_ID),
     baseUrl: environment.WORKATO_BASE_URL ?? "https://genie-api.workato.com",
-    genieHandle: environment.WORKATO_GENIE_HANDLE
+    genieHandle: environment.WORKATO_GENIE_HANDLE,
+    mode: isOAuth ? "oauth" : "api-key",
+    auth: isOAuth ? undefined : new ApiKeyAuth(environment.WORKATO_API_KEY, environment.WORKATO_IDP_USER_ID),
+    oauth: isOAuth ? {
+      clientId: environment.WORKATO_OAUTH_CLIENT_ID,
+      redirectUri: environment.WORKATO_OAUTH_REDIRECT_URI,
+      identityBaseUrl: environment.WORKATO_IDENTITY_BASE_URL
+    } : undefined
   };
 }
 
@@ -92,14 +102,55 @@ function streamEvent(response, event) {
   response.write(`event: genie\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
-export function createApp(environment = loadEnvironmentFile()) {
+function sessionId(request) {
+  return request.headers.cookie?.match(/(?:^|;\s*)genie_session=([^;]+)/)?.[1];
+}
+
+export function createApp(environment = loadEnvironmentFile(), { oauthPkce } = {}) {
   const config = configuration(environment);
-  const client = new GenieClient({ auth: config.auth, baseUrl: config.baseUrl });
+  const sessions = new Map();
+  const pkce = config.mode === "oauth" ? (oauthPkce ?? new OAuthPkce(config.oauth)) : undefined;
+  const expiredSessionMessage = "OAuth session is missing or expired. This example keeps sessions in memory; restart and sign in again.";
+  const clientFor = (request) => {
+    if (config.mode === "api-key") return new GenieClient({ auth: config.auth, baseUrl: config.baseUrl });
+    const session = sessions.get(sessionId(request));
+    if (!session?.tokens) {
+      const error = new Error(expiredSessionMessage);
+      error.status = 401;
+      throw error;
+    }
+    if (!session.auth) session.auth = pkce.refreshableAuth(() => session.tokens, (tokens) => { session.tokens = tokens; });
+    return new GenieClient({ baseUrl: config.baseUrl, auth: session.auth });
+  };
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://localhost");
+      if (config.mode === "oauth" && request.method === "GET" && url.pathname === "/auth/login") {
+        const login = await pkce.createAuthorizationRequest();
+        const id = randomUUID();
+        sessions.set(id, { login });
+        response.writeHead(302, { Location: login.authorizationUrl, "Set-Cookie": `genie_session=${id}; HttpOnly; SameSite=Lax; Path=/` });
+        return response.end();
+      }
+      if (config.mode === "oauth" && request.method === "GET" && url.pathname === new URL(config.oauth.redirectUri).pathname) {
+        const session = sessions.get(sessionId(request));
+        if (!session?.login) return sendJson(response, 401, { error: expiredSessionMessage });
+        if (url.searchParams.get("state") !== session.login.state) return sendJson(response, 400, { error: "OAuth callback state does not match the login request" });
+        // request.url is only a path; rebuild against the public redirect_uri so the token
+        // exchange reports the same redirect_uri the identity server issued the code for.
+        session.tokens = await pkce.exchangeCallback(new URL(request.url, config.oauth.redirectUri), session.login);
+        delete session.login;
+        response.writeHead(302, { Location: "/", "Cache-Control": "no-store" });
+        return response.end();
+      }
+      if (config.mode === "oauth" && request.method === "GET" && url.pathname === "/" && !sessions.get(sessionId(request))) {
+        response.writeHead(302, { Location: "/auth/login", "Cache-Control": "no-store" });
+        return response.end();
+      }
       if (request.method === "GET" && !url.pathname.startsWith("/api/")) return await serveStatic(request, response);
       if (request.method === "GET" && url.pathname === "/api/health") return sendJson(response, 200, { status: "ok" });
+
+      const client = clientFor(request);
 
       if (request.method === "POST" && url.pathname === "/api/conversations") {
         const conversation = await client.createConversation(config.genieHandle);

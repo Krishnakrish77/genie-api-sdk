@@ -19,8 +19,9 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "prepublishOnly": "npm run check && npm test"
   },
-  "engines": { "node": ">=18" },
+  "engines": { "node": ">=20.19" },
   "packageManager": "npm@10.9.2",
   "publishConfig": { "access": "public", "provenance": true },
+  "dependencies": { "openid-client": "^6.8.7" },
   "devDependencies": { "typescript": "^7.0.2" }
 }

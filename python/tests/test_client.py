@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from genie_api_sdk import (AgentMessageEvent, ApiKeyAuth, AsyncGenieClient,
-                           AsyncOAuthAuth, AsyncRefreshableOAuthAuth, GenieClient, OAuthAuth, OAuthTokens,
-                           RefreshableOAuthAuth, AuthenticationError)
+                           AsyncOAuthAuth, AsyncRefreshableOAuthAuth, GenieClient, OAuthAuth, OAuthPkce,
+                           OAuthTokens, RefreshableOAuthAuth, AuthenticationError)
 
 
 def test_shared_http_client_keeps_each_sdk_clients_credentials_isolated():
@@ -124,6 +124,38 @@ def test_refreshable_oauth_auth_refreshes_once_and_persists_rotating_tokens():
     assert refreshes == ["refresh-1"]
 
 
+def test_oauth_pkce_uses_s256_validates_state_and_never_sends_a_client_secret():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        payload = {"access_token": "access" if len(requests) == 1 else "fresh", "refresh_token": "refresh-1" if len(requests) == 1 else "refresh-2", "expires_in": 3600, "token_type": "Bearer"}
+        return httpx.Response(200, json=payload)
+
+    oauth = OAuthPkce(client_id="client-id", redirect_uri="https://app.example/callback", identity_base_url="https://identity.example", http_transport=httpx.MockTransport(handler))
+    login = oauth.create_authorization_request()
+    authorization = httpx.URL(login.authorization_url)
+    assert authorization.host == "identity.example"
+    assert authorization.params["redirect_uri"] == "https://app.example/callback"
+    assert authorization.params["scope"] == "openid profile"
+    assert authorization.params["state"] == login.state
+    assert authorization.params["code_challenge_method"] == "S256"
+    try:
+        oauth.exchange_callback("https://app.example/callback?code=code&state=wrong", login)
+    except ValueError as error:
+        assert "state" in str(error)
+    else:
+        raise AssertionError("expected state validation failure")
+    tokens = oauth.exchange_callback(f"https://app.example/callback?code=code&state={login.state}", login)
+    assert tokens.refresh_token == "refresh-1"
+    assert oauth.refresh(tokens).refresh_token == "refresh-2"
+    bodies = [request.content.decode() for request in requests]
+    assert "grant_type=authorization_code" in bodies[0]
+    assert "client_id=client-id" in bodies[0]
+    assert "grant_type=refresh_token" in bodies[1]
+    assert all("client_secret" not in body and "authorization" not in request.headers for body, request in zip(bodies, requests))
+
+
 def test_safe_reads_refresh_once_after_unauthorized_but_messages_do_not_retry():
     class Auth:
         token = "old"
@@ -157,6 +189,29 @@ def test_safe_reads_refresh_once_after_unauthorized_but_messages_do_not_retry():
     else:
         raise AssertionError("expected authentication failure")
     assert len(requests) == 3 and auth.refreshes == 1
+
+
+def test_safe_read_preserves_gateway_401_when_oauth_refresh_fails():
+    class Auth:
+        def headers(self):
+            return {"Authorization": "Bearer rejected"}
+
+        def force_refresh(self):
+            raise RuntimeError("refresh rejected")
+
+    client = GenieClient(
+        auth=Auth(),
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda _request: httpx.Response(401, json={"error": "OAuth client is not attached to this genie"})),
+            base_url="https://example.test",
+        ),
+    )
+    try:
+        client.get_conversation("genie", "conversation")
+    except AuthenticationError as error:
+        assert error.body == {"error": "OAuth client is not attached to this genie"}
+    else:
+        raise AssertionError("expected authentication failure")
 
 
 def test_async_oauth_provider_is_awaited():
