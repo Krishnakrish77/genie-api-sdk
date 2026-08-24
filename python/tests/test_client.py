@@ -214,6 +214,35 @@ def test_safe_read_preserves_gateway_401_when_oauth_refresh_fails():
         raise AssertionError("expected authentication failure")
 
 
+def test_safe_read_surfaces_retried_requests_own_failure_after_successful_refresh():
+    class Auth:
+        def headers(self):
+            return {"Authorization": "Bearer old"}
+
+        def force_refresh(self):
+            pass
+
+    attempts = []
+
+    def handler(request):
+        attempts.append(request)
+        if len(attempts) == 1:
+            return httpx.Response(401)
+        raise httpx.ConnectError("network dropped", request=request)
+
+    client = GenieClient(
+        auth=Auth(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"),
+    )
+    try:
+        client.get_conversation("genie", "conversation")
+    except httpx.ConnectError as error:
+        assert "network dropped" in str(error)
+    else:
+        raise AssertionError("expected the retried request's own network error to propagate")
+    assert len(attempts) == 2
+
+
 def test_async_oauth_provider_is_awaited():
     async def run():
         async def access_token():

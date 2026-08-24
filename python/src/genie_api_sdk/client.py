@@ -57,10 +57,10 @@ class GenieClient:
         if response.status_code == 401 and hasattr(self._auth, "force_refresh"):
             try:
                 self._auth.force_refresh()  # type: ignore[attr-defined]
-                response = self._client.get(path, params=params, headers=self._headers())
             except Exception:
                 # Preserve the gateway's original 401 rather than masking it with a refresh failure.
-                pass
+                return raise_for_status(response)
+            response = self._client.get(path, params=params, headers=self._headers())
         return raise_for_status(response)
 
     def list_conversations(self, genie_handle: str, *, limit: Optional[int] = None, cursor: Optional[str] = None) -> Page[Conversation]:

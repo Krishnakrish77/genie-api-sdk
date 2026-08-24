@@ -99,6 +99,7 @@ test("OAuth login stores the PKCE request, accepts its callback, and rejects a c
     assert.equal(login.status, 302);
     assert.equal(login.headers.get("location"), "https://identity.example/oauth/authorize?state=state");
     assert.match(login.headers.get("set-cookie"), /genie_session=/);
+    assert.match(login.headers.get("set-cookie"), /Secure/);
     const cookie = login.headers.get("set-cookie").split(";", 1)[0];
     const invalid = await fetch(`http://127.0.0.1:${port}/auth/callback?code=code&state=wrong`, { headers: { Cookie: cookie }, redirect: "manual" });
     assert.equal(invalid.status, 400);

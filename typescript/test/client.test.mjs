@@ -43,6 +43,32 @@ test("OAuth PKCE builds a public-client authorization request and exchanges rota
   assert.doesNotMatch(requests.map((request) => `${request.body} ${request.authorization}`).join(" "), /client_secret|Basic /);
 });
 
+test("OAuth PKCE retries discovery after a transient failure instead of failing forever", async () => {
+  let discoveryAttempts = 0;
+  const oauth = new OAuthPkce({
+    clientId: "client-id", redirectUri: "https://app.example/callback", identityBaseUrl: "https://identity.example",
+    fetch: async (url) => {
+      if (String(url).endsWith("/.well-known/openid-configuration")) {
+        discoveryAttempts += 1;
+        if (discoveryAttempts === 1) throw new Error("network blip");
+        return new Response(JSON.stringify({
+          issuer: "https://identity.example",
+          authorization_endpoint: "https://identity.example/oauth/authorize",
+          token_endpoint: "https://identity.example/oauth/token",
+          response_types_supported: ["code"],
+          subject_types_supported: ["public"],
+          id_token_signing_alg_values_supported: ["RS256"],
+        }), { headers: { "content-type": "application/json" } });
+      }
+      throw new Error("unexpected request: " + url);
+    }
+  });
+  await assert.rejects(() => oauth.createAuthorizationRequest());
+  const login = await oauth.createAuthorizationRequest();
+  assert.equal(new URL(login.authorizationUrl).origin, "https://identity.example");
+  assert.equal(discoveryAttempts, 2);
+});
+
 test("parses CRLF SSE frames split at arbitrary chunk boundaries", async () => {
   const encoder = new TextEncoder();
   const chunks = [
@@ -142,6 +168,20 @@ test("preserves the gateway 401 when an OAuth refresh fails", async () => {
     () => client.getConversation("genie", "conversation"),
     (error) => error instanceof AuthenticationError && error.body.error === "OAuth client is not attached to this genie"
   );
+});
+
+test("surfaces the retried request's own failure instead of the stale 401 when refresh succeeds", async () => {
+  let attempts = 0;
+  const client = new GenieClient({
+    auth: { headers: () => ({ Authorization: "Bearer old" }), forceRefresh: async () => {} },
+    fetch: async () => {
+      attempts += 1;
+      if (attempts === 1) return new Response("unauthorized", { status: 401 });
+      throw new Error("network dropped");
+    }
+  });
+  await assert.rejects(() => client.getConversation("genie", "conversation"), /network dropped/);
+  assert.equal(attempts, 2);
 });
 
 test("throws a typed authentication error with the request ID", async () => {

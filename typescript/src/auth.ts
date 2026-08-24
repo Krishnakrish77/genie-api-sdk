@@ -92,7 +92,7 @@ export class OAuthPkce {
         { redirect_uris: [this.redirectUri], token_endpoint_auth_method: "none" },
         None(),
         this.customFetch ? { [customFetch]: this.customFetch as never } : undefined,
-      );
+      ).catch((error) => { this.configurationPromise = undefined; throw error; });
     }
     return this.configurationPromise;
   }

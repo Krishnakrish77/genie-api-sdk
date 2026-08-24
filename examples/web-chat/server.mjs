@@ -106,13 +106,16 @@ function sessionId(request) {
   return request.headers.cookie?.match(/(?:^|;\s*)genie_session=([^;]+)/)?.[1];
 }
 
+const ABANDONED_LOGIN_TTL_MS = 10 * 60 * 1000;
+
 export function createApp(environment = loadEnvironmentFile(), { oauthPkce } = {}) {
   const config = configuration(environment);
   const sessions = new Map();
   const pkce = config.mode === "oauth" ? (oauthPkce ?? new OAuthPkce(config.oauth)) : undefined;
   const expiredSessionMessage = "OAuth session is missing or expired. This example keeps sessions in memory; restart and sign in again.";
+  const apiKeyClient = config.mode === "api-key" ? new GenieClient({ auth: config.auth, baseUrl: config.baseUrl }) : undefined;
   const clientFor = (request) => {
-    if (config.mode === "api-key") return new GenieClient({ auth: config.auth, baseUrl: config.baseUrl });
+    if (config.mode === "api-key") return apiKeyClient;
     const session = sessions.get(sessionId(request));
     if (!session?.tokens) {
       const error = new Error(expiredSessionMessage);
@@ -122,14 +125,21 @@ export function createApp(environment = loadEnvironmentFile(), { oauthPkce } = {
     if (!session.auth) session.auth = pkce.refreshableAuth(() => session.tokens, (tokens) => { session.tokens = tokens; });
     return new GenieClient({ baseUrl: config.baseUrl, auth: session.auth });
   };
+  // Sweep abandoned logins only when a new one starts, avoiding a background timer.
+  const evictAbandonedLogins = () => {
+    const cutoff = Date.now() - ABANDONED_LOGIN_TTL_MS;
+    for (const [id, session] of sessions) if (session.login && session.login.startedAt < cutoff) sessions.delete(id);
+  };
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://localhost");
       if (config.mode === "oauth" && request.method === "GET" && url.pathname === "/auth/login") {
+        evictAbandonedLogins();
         const login = await pkce.createAuthorizationRequest();
         const id = randomUUID();
-        sessions.set(id, { login });
-        response.writeHead(302, { Location: login.authorizationUrl, "Set-Cookie": `genie_session=${id}; HttpOnly; SameSite=Lax; Path=/` });
+        sessions.set(id, { login: { ...login, startedAt: Date.now() } });
+        const secure = config.oauth.redirectUri.startsWith("https://") ? "; Secure" : "";
+        response.writeHead(302, { Location: login.authorizationUrl, "Set-Cookie": `genie_session=${id}; HttpOnly; SameSite=Lax; Path=/${secure}` });
         return response.end();
       }
       if (config.mode === "oauth" && request.method === "GET" && url.pathname === new URL(config.oauth.redirectUri).pathname) {

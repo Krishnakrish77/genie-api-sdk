@@ -182,12 +182,14 @@ export class GenieClient {
     };
     let response = await sendWithAuth();
     if (response.status === 401 && method === "GET" && this.auth.forceRefresh) {
+      let refreshed = false;
       try {
         await this.auth.forceRefresh();
-        response = await sendWithAuth();
+        refreshed = true;
       } catch {
         // Preserve the gateway's original 401 rather than masking it with a refresh failure.
       }
+      if (refreshed) response = await sendWithAuth();
     }
     if (!response.ok) {
       let errorBody: unknown; try { errorBody = await response.json(); } catch { errorBody = await response.text(); }
