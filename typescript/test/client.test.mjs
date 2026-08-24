@@ -84,6 +84,15 @@ test("throws a typed authentication error with the request ID", async () => {
   );
 });
 
+test("accepts the beta gateway result envelope", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => Response.json({ result: { conversation_id: "conversation" } })
+  });
+
+  assert.equal((await client.createConversation("genie")).conversation_id, "conversation");
+});
+
 test("reconnects after an interrupted stream", async () => {
   const encoder = new TextEncoder();
   const requests = [];

@@ -117,7 +117,7 @@ export class GenieClient {
   async uploadFile(genieHandle: string, conversationId: string, file: Blob): Promise<string> {
     const form = new FormData(); form.append("file", file);
     const response = await this.request("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/upload`), undefined, form);
-    return (await response.json() as { file_id: string }).file_id;
+    return unwrapResult(await response.json() as Record<string, unknown>).file_id as string;
   }
 
   private id(value: string): string { return encodeURIComponent(value); }
@@ -125,7 +125,7 @@ export class GenieClient {
 
   private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown, signal?: AbortSignal): Promise<T> {
     const response = await this.request(method, path, params, body, undefined, signal);
-    return response.json() as Promise<T>;
+    return unwrapResult(await response.json() as Record<string, unknown>) as T;
   }
 
   private async request(method: string, path: string, params?: Record<string, unknown>, body?: unknown, extraHeaders?: HeadersInit, signal?: AbortSignal): Promise<Response> {
@@ -189,6 +189,13 @@ export class GenieClient {
       sinceCreatedAt = data.next_since_created_at;
     }
   }
+}
+
+/** Accept the documented response body and the `{ result: ... }` envelope used by beta gateways. */
+function unwrapResult(value: Record<string, unknown>): Record<string, unknown> {
+  return value.result && typeof value.result === "object" && !Array.isArray(value.result)
+    ? value.result as Record<string, unknown>
+    : value;
 }
 
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {

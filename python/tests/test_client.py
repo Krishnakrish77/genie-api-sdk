@@ -48,6 +48,24 @@ def test_api_key_auth_resolves_the_current_user_for_each_request():
     assert seen == ["first-user", "second-user"]
 
 
+def test_clients_accept_the_beta_gateway_result_envelope():
+    def sync_handler(_request):
+        return httpx.Response(200, json={"result": {"conversation_id": "conversation"}})
+
+    sync_client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(sync_handler), base_url="https://example.test"))
+    assert sync_client.create_conversation("genie").conversation_id == "conversation"
+
+    async def run():
+        async def async_handler(_request):
+            return httpx.Response(200, json={"result": {"conversation_id": "conversation"}})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(async_handler), base_url="https://example.test") as http_client:
+            client = AsyncGenieClient(auth=ApiKeyAuth("key", "user"), http_client=http_client)
+            return await client.create_conversation("genie")
+
+    assert asyncio.run(run()).conversation_id == "conversation"
+
+
 def test_recovery_reconnects_from_last_event_and_returns_typed_events():
     requests = []
 

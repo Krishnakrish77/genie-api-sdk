@@ -105,6 +105,8 @@ for await (const event of client.streamMessage(handle, conversation.conversation
 
 Call `send_message` / `sendMessage` when you want the asynchronous `Run` response instead of holding an SSE connection. Persist its `genie_run_id`; it lets you reconnect after a disconnect.
 
+The SDK accepts both the documented response body and the `{ "result": ... }` envelope emitted by some beta gateway deployments.
+
 ## SSE event handling and recovery
 
 Streams end normally with `processing.finished`. Ignore `system.ping`. Treat `system.stream_interrupted` as a recovery signal, not a failed turn.
