@@ -61,7 +61,7 @@ function renderMarkdown(container, markdown) {
   }
 }
 
-function actionCard(title, description, actions, { id, runId, onCompleted } = {}) {
+function actionCard(title, description, actions, { id, runId, keepOnSuccess = false, onCompleted } = {}) {
   // Stream recovery can replay the same confirmation. One call ID represents
   // one decision, so never present it twice (or after it has been resolved).
   if (id && (resolvedActionIds.has(id) || visibleActionCards.has(id) || (runId && completedRunIds.has(runId)))) return;
@@ -87,9 +87,12 @@ function actionCard(title, description, actions, { id, runId, onCompleted } = {}
         await action.run();
         if (id) {
           resolvedActionIds.add(id);
-          visibleActionCards.delete(id);
+          if (!keepOnSuccess) visibleActionCards.delete(id);
         }
-        card.remove();
+        if (keepOnSuccess) {
+          copy.textContent = "Approved. Waiting for Genie to finish…";
+          controls.remove();
+        } else card.remove();
         setStatus("Ready");
         void onCompleted?.();
       } catch {
@@ -202,26 +205,30 @@ function processEvent(event, assistant) {
   }
   if (event.type === "processing.started") setStatus("Thinking…", "working");
   if (event.type === "processing.finished") {
-    dismissCompletedRunActions(event.genie_run_id);
+    completedRunIds.add(event.genie_run_id);
     setStatus("Ready");
   }
   if (["skill.completed", "skill.stopped", "skill.failed"].includes(event.type) && event.data.skill_name) {
     const actionId = `skill:${conversationId}:${event.data.skill_name}`;
     const card = visibleActionCards.get(actionId);
     if (card) {
+      const failed = event.type === "skill.failed";
+      card.querySelector("h2").textContent = failed ? "Action failed" : "Action completed";
+      card.querySelector("p:not(.message-label)").textContent = failed ? "Genie could not complete this action." : "Genie completed this action.";
+      card.querySelector(".action-controls")?.remove();
       resolvedActionIds.add(actionId);
       visibleActionCards.delete(actionId);
-      card.remove();
     }
   }
   if (event.type === "system.stream_interrupted") setStatus("Reconnecting…", "working");
   if (event.type === "skill.confirmation_required") {
     const pendingConversationId = conversationId;
     const actionId = `skill:${pendingConversationId}:${event.data.skill_name}`;
-    actionCard("Approve this action?", event.data.skill_name ? `Genie wants to use ${event.data.skill_name}.` : "Genie needs your confirmation to continue.", [
+    const parameters = event.data.skill_parameters && typeof event.data.skill_parameters === "object" ? ` Review: ${JSON.stringify(event.data.skill_parameters)}` : "";
+    actionCard("Approve this action?", `${event.data.skill_name ? `Genie wants to use ${event.data.skill_name}.` : "Genie needs your confirmation to continue."}${parameters}`, [
       { label: "Approve", run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "approved" }) },
       { label: "Decline", secondary: true, run: () => json("/api/skill-approvals", { conversationId: pendingConversationId, callId: event.data.call_id, resolution: "rejected", rejectionReason: "Declined by user" }) }
-    ], { id: actionId, runId: event.genie_run_id });
+    ], { id: actionId, runId: event.genie_run_id, keepOnSuccess: true });
     const card = visibleActionCards.get(actionId);
     if (card && event.genie_run_id) card.dataset.genieRunId = event.genie_run_id;
   }
