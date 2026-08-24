@@ -41,7 +41,7 @@ function messageCard(role, text = "") {
 }
 
 function appendInlineMarkdown(element, text) {
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^\s)]+\))/g;
   let position = 0;
   for (const match of text.matchAll(pattern)) {
     element.append(document.createTextNode(text.slice(position, match.index)));
@@ -55,13 +55,22 @@ function appendInlineMarkdown(element, text) {
       code.textContent = token.slice(1, -1);
       element.append(code);
     } else {
-      const [, label, href] = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/) ?? [];
-      const link = document.createElement("a");
-      link.href = href;
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      link.textContent = label;
-      element.append(link);
+      const [, label, destination] = token.match(/^\[([^\]]+)\]\(([^\s)]+)\)$/) ?? [];
+      let href;
+      try {
+        const url = new URL(destination);
+        if (["https:", "http:"].includes(url.protocol)) href = url.href;
+      } catch { /* Render invalid or relative destinations as ordinary text. */ }
+      if (href) {
+        const link = document.createElement("a");
+        link.href = href;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = label;
+        element.append(link);
+      } else {
+        element.append(document.createTextNode(token));
+      }
     }
     position = (match.index ?? 0) + token.length;
   }

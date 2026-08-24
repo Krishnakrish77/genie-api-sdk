@@ -31,6 +31,8 @@ test("renders Genie Markdown with DOM nodes rather than injected HTML", async ()
   assert.match(script, /function renderMarkdown/);
   assert.match(script, /document\.createElement\("strong"\)/);
   assert.match(script, /renderMarkdown\(assistant, event\.data\.message/);
+  assert.match(script, /new URL\(destination\)/);
+  assert.match(script, /\["https:", "http:"\]\./);
   assert.doesNotMatch(script, /innerHTML\s*=\s*markdown/);
 });
 
