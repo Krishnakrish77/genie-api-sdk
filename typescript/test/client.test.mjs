@@ -196,25 +196,6 @@ test("reconnects after an interrupted stream", async () => {
   assert.equal(requests.length, 2);
 });
 
-test("attaches to a paused run from its last SSE event", async () => {
-  const encoder = new TextEncoder();
-  let request;
-  const client = new GenieClient({
-    auth: new OAuthAuth(() => "token"),
-    fetch: async (url, init) => {
-      request = { url: String(url), headers: new Headers(init.headers) };
-      return new Response(new ReadableStream({ start(controller) {
-        controller.enqueue(encoder.encode("event: agent.message\nid: completed\ndata: {\"genie_run_id\":\"run\",\"message\":\"Delivered\"}\n\n")); controller.close();
-      } }));
-    }
-  });
-  const events = [];
-  for await (const event of client.streamRun("genie", "conversation", "run", { lastEventId: "approval" })) events.push(event);
-  assert.match(request.url, /conversations\/conversation\/genie-runs\/run$/);
-  assert.equal(request.headers.get("Last-Event-ID"), "approval");
-  assert.equal(events[0].data.message, "Delivered");
-});
-
 test("covers conversation, event, approval, runtime connection, and upload operations", async () => {
   const requests = [];
   const client = new GenieClient({

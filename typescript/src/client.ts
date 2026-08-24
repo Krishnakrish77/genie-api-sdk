@@ -93,7 +93,7 @@ export class GenieClient {
   }
 
   /** Attach to an existing run, for example after resolving a paused approval. */
-  async *streamRun(genieHandle: string, conversationId: string, genieRunId: string, options: { lastEventId?: string; maxReconnects?: number; signal?: AbortSignal } = {}): AsyncGenerator<Event> {
+  private async *streamRun(genieHandle: string, conversationId: string, genieRunId: string, options: { lastEventId?: string; maxReconnects?: number; signal?: AbortSignal } = {}): AsyncGenerator<Event> {
     const { lastEventId: initialLastEventId, maxReconnects = 3, signal } = options;
     if (maxReconnects < 0) throw new Error("maxReconnects must be non-negative");
     let stream = this.reconnect(genieHandle, conversationId, genieRunId, initialLastEventId, signal);
