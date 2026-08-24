@@ -109,7 +109,6 @@ function sessionId(request) {
 export function createApp(environment = loadEnvironmentFile(), { oauthPkce } = {}) {
   const config = configuration(environment);
   const sessions = new Map();
-  const activeRuns = new Map();
   const pkce = config.mode === "oauth" ? (oauthPkce ?? new OAuthPkce(config.oauth)) : undefined;
   const expiredSessionMessage = "OAuth session is missing or expired. This example keeps sessions in memory; restart and sign in again.";
   const clientFor = (request) => {
@@ -122,14 +121,6 @@ export function createApp(environment = loadEnvironmentFile(), { oauthPkce } = {
     }
     if (!session.auth) session.auth = pkce.refreshableAuth(() => session.tokens, (tokens) => { session.tokens = tokens; });
     return new GenieClient({ baseUrl: config.baseUrl, auth: session.auth });
-  };
-  const runKey = (request, conversationId) => `${sessionId(request) ?? "api-key"}:${conversationId}`;
-  const rememberRunEvent = (request, conversationId, event) => {
-    const key = runKey(request, conversationId);
-    const run = activeRuns.get(key) ?? {};
-    if (event.genie_run_id) run.genieRunId = event.genie_run_id;
-    if (event.event_id) run.lastEventId = event.event_id;
-    activeRuns.set(key, run);
   };
   return createServer(async (request, response) => {
     try {
@@ -181,29 +172,9 @@ export function createApp(environment = loadEnvironmentFile(), { oauthPkce } = {
         if (typeof message !== "string" || !message.trim()) return sendJson(response, 400, { error: "message is required" });
         response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" });
         try {
-          for await (const event of client.streamMessage(config.genieHandle, decodeURIComponent(messageRoute[1]), message.trim())) {
-            rememberRunEvent(request, decodeURIComponent(messageRoute[1]), event);
-            streamEvent(response, event);
-          }
+          for await (const event of client.streamMessage(config.genieHandle, decodeURIComponent(messageRoute[1]), message.trim())) streamEvent(response, event);
         } catch (error) {
           streamEvent(response, { type: "error", data: { message: "The response stream failed. Please try again." }, status: statusFor(error) });
-        }
-        return response.end();
-      }
-
-      const resumeRoute = url.pathname.match(/^\/api\/conversations\/([^/]+)\/resume$/);
-      if (request.method === "GET" && resumeRoute) {
-        const conversationId = decodeURIComponent(resumeRoute[1]);
-        const run = activeRuns.get(runKey(request, conversationId));
-        if (!run?.genieRunId) return sendJson(response, 409, { error: "No resumable Genie run is available for this conversation" });
-        response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" });
-        try {
-          for await (const event of client.streamRun(config.genieHandle, conversationId, run.genieRunId, { lastEventId: run.lastEventId })) {
-            rememberRunEvent(request, conversationId, event);
-            streamEvent(response, event);
-          }
-        } catch (error) {
-          streamEvent(response, { type: "error", data: { message: "The resumed response stream failed. Please try again." }, status: statusFor(error) });
         }
         return response.end();
       }

@@ -34,8 +34,9 @@ test("composer sends on Enter and preserves Shift+Enter for a new line", async (
   assert.match(script, /const visibleActionCards = new Map\(\)/);
   assert.match(script, /const completedRunIds = new Set\(\)/);
   assert.match(script, /dismissCompletedRunActions\(event\.genie_run_id\)/);
-  assert.match(script, /resumeRunAfterApproval/);
-  assert.match(script, /skill:\$\{pendingConversationId\}:\$\{event\.data\.call_id\}/);
+  assert.doesNotMatch(script, /resumeRunAfterApproval/);
+  assert.match(script, /skill:\$\{pendingConversationId\}:\$\{event\.data\.skill_name\}/);
+  assert.match(script, /\["skill\.completed", "skill\.stopped", "skill\.failed"\]/);
 });
 
 test("renders Genie Markdown with a maintained parser and sanitizer", async () => {
@@ -74,9 +75,7 @@ test("exposes server-side conversation history routes", async () => {
   const source = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   assert.match(source, /client\.listConversations\(config\.genieHandle\)/);
   assert.match(source, /client\.listMessages\(config\.genieHandle, decodeURIComponent\(historyRoute\[1\]\)\)/);
-  assert.match(source, /const activeRuns = new Map\(\)/);
-  assert.match(source, /rememberRunEvent\(request, decodeURIComponent\(messageRoute\[1\]\), event\)/);
-  assert.match(source, /client\.streamRun\(config\.genieHandle, conversationId, run\.genieRunId/);
+  assert.doesNotMatch(source, /\/resume\$/);
 });
 
 test("OAuth login stores the PKCE request, accepts its callback, and rejects a callback after a restart", async () => {
