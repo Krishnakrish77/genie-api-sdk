@@ -5,7 +5,18 @@ const input = document.querySelector("#message");
 const sendButton = document.querySelector("#send");
 const connection = document.querySelector("#connection");
 const newChat = document.querySelector("#new-chat");
-let conversationId = localStorage.getItem("genie-conversation-id") ?? null;
+function storedConversationId() {
+  const id = localStorage.getItem("genie-conversation-id");
+  // Older versions could persist the literal string "undefined" when a beta
+  // gateway wrapped its create-conversation response.
+  if (id === "undefined" || id === "null") {
+    localStorage.removeItem("genie-conversation-id");
+    return null;
+  }
+  return id;
+}
+
+let conversationId = storedConversationId();
 
 function setStatus(text, state = "ready") {
   connection.textContent = text;

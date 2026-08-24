@@ -21,6 +21,7 @@ test("composer sends on Enter and preserves Shift+Enter for a new line", async (
   const script = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
   assert.match(script, /event\.key === "Enter" && !event\.shiftKey && !event\.isComposing/);
   assert.match(script, /composer\.requestSubmit\(\)/);
+  assert.match(script, /id === "undefined" \|\| id === "null"/);
 });
 
 test("serves the chat UI and rejects an empty message before calling the API", async () => {
