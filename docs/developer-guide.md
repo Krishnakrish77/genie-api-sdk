@@ -172,7 +172,7 @@ the API key and streams SDK events to the browser. It makes skill confirmation
 and runtime-connection authorization explicit user actions instead of
 automatically accepting either.
 
-`examples/web-chat/e2e-smoke.mjs` is deliberately excluded from CI. It starts
+`examples/web-chat/test/e2e-smoke.mjs` is deliberately excluded from CI. It starts
 the sample server and only contacts a workspace when `GENIE_E2E=1` and the
 `WORKATO_API_KEY`, `WORKATO_IDP_USER_ID`, and `WORKATO_GENIE_HANDLE`
 environment variables are set. Run it only against a non-production workspace.

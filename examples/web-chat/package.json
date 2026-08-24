@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test test/*.test.mjs",
-    "e2e": "node e2e-smoke.mjs"
+    "e2e": "node test/e2e-smoke.mjs"
   },
   "engines": { "node": ">=18" },
   "dependencies": {
