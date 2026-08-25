@@ -116,6 +116,7 @@ export class GenieClient {
         }
       } catch (error) {
         if (signal?.aborted) throw signal.reason ?? error;
+        if (error instanceof GenieApiError) throw error;
         interrupted = true;
       }
       if (!interrupted) return;

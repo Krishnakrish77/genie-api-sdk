@@ -254,6 +254,23 @@ test("streamRun reconnects a persisted run after the supplied event ID", async (
   assert.equal(requests[0].headers["Last-Event-ID"], "previous/id");
 });
 
+test("streamRun surfaces an API failure without retrying or replaying", async () => {
+  const requests = [];
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async (url) => {
+      requests.push(String(url));
+      return new Response(JSON.stringify({ error: "invalid token" }), { status: 401, headers: { "content-type": "application/json" } });
+    }
+  });
+
+  await assert.rejects(async () => {
+    for await (const _event of client.streamRun("genie", "conversation", "run")) { /* no events */ }
+  }, AuthenticationError);
+  assert.equal(requests.length, 1);
+  assert.match(requests[0], /\/genie-runs\/run$/);
+});
+
 test("covers conversation, event, approval, runtime connection, and upload operations", async () => {
   const requests = [];
   const client = new GenieClient({
