@@ -28,4 +28,4 @@ client = GenieClient(auth=oauth.refreshable_auth(load_tokens=load_tokens, persis
 
 For rotating OAuth credentials, use `RefreshableOAuthAuth`. Its `refresh_and_persist` callback must atomically refresh and save the winning token set (for example, with a database transaction or distributed lock).
 
-Use `AsyncGenieClient` with `async with` for ASGI applications and other asynchronous services. `stream_message()` automatically reconnects interrupted streams; use its `max_reconnects` flag to tune recovery.
+Use `AsyncGenieClient` with `async with` for ASGI applications and other asynchronous services. `stream_message()` automatically reconnects interrupted streams; use its `max_reconnects` flag to tune recovery. To resume a persisted run after an application restart, call `stream_run(handle, conversation_id, genie_run_id, last_event_id=last_event_id)`.

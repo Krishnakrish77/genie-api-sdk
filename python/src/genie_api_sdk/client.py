@@ -135,8 +135,11 @@ class GenieClient:
 
         return events()
 
-    def _stream_run(self, genie_handle: str, conversation_id: str, genie_run_id: str, *, last_event_id: Optional[str] = None, max_reconnects: int = 3) -> Iterator[Event]:
-        """Attach to an existing run, for example after resolving a paused approval."""
+    def stream_run(self, genie_handle: str, conversation_id: str, genie_run_id: str, *, last_event_id: Optional[str] = None, max_reconnects: int = 3) -> Iterator[Event]:
+        """Reattach to a persisted run, resuming after ``last_event_id`` when supplied.
+
+        Use this after an application restart or after resolving a paused approval.
+        """
         if max_reconnects < 0:
             raise ValueError("max_reconnects must be non-negative")
 

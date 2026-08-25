@@ -94,6 +94,21 @@ def test_recovery_reconnects_from_last_event_and_returns_typed_events():
     assert len(requests) == 2
 
 
+def test_stream_run_reconnects_a_persisted_run_after_the_supplied_event_id():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, content=b"event: agent.message\nid: next\ndata: {\"message\":\"Recovered\"}\n\n")
+
+    client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    events = list(client.stream_run("genie/handle", "conversation/id", "run/id", last_event_id="previous/id"))
+
+    assert events[0].message == "Recovered"
+    assert requests[0].url.raw_path == b"/api/v1/genies/genie%2Fhandle/chat/conversations/conversation%2Fid/genie-runs/run%2Fid"
+    assert requests[0].headers["last-event-id"] == "previous/id"
+
+
 def test_async_client_streams_typed_events():
     async def run():
         async def handler(request):
@@ -106,6 +121,20 @@ def test_async_client_streams_typed_events():
     events = asyncio.run(run())
     assert isinstance(events[0], AgentMessageEvent)
     assert events[0].message == "Hello"
+
+
+def test_async_client_stream_run_reconnects_a_persisted_run():
+    async def run():
+        async def handler(request):
+            assert request.headers["last-event-id"] == "previous"
+            assert request.url.path.endswith("/genie-runs/run")
+            return httpx.Response(200, content=b"event: agent.message\ndata: {\"message\":\"Recovered\"}\n\n")
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test") as http_client:
+            client = AsyncGenieClient(auth=ApiKeyAuth("key", "user"), http_client=http_client)
+            return [event async for event in client.stream_run("genie", "conversation", "run", last_event_id="previous")]
+
+    assert asyncio.run(run())[0].message == "Recovered"
 
 
 def test_refreshable_oauth_auth_refreshes_once_and_persists_rotating_tokens():
