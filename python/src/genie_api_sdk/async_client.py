@@ -164,8 +164,11 @@ class AsyncGenieClient:
                 yield event
             return
 
-    async def _stream_run(self, genie_handle: str, conversation_id: str, genie_run_id: str, *, last_event_id: Optional[str] = None, max_reconnects: int = 3) -> AsyncIterator[Event]:
-        """Attach to an existing run, for example after resolving a paused approval."""
+    async def stream_run(self, genie_handle: str, conversation_id: str, genie_run_id: str, *, last_event_id: Optional[str] = None, max_reconnects: int = 3) -> AsyncIterator[Event]:
+        """Reattach to a persisted run, resuming after ``last_event_id`` when supplied.
+
+        Use this after an application restart or after resolving a paused approval.
+        """
         if max_reconnects < 0:
             raise ValueError("max_reconnects must be non-negative")
         stream = self._reconnect(genie_handle, conversation_id, genie_run_id, last_event_id=last_event_id)

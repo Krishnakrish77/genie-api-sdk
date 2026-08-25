@@ -135,7 +135,7 @@ The SDK accepts both the documented response body and the `{ "result": ... }` en
 
 Streams end normally with `processing.finished`. Ignore `system.ping`. Treat `system.stream_interrupted` as a recovery signal, not a failed turn.
 
-`stream_message` / `streamMessage` is the single streaming API. It reconnects with the most recent event ID and replays persisted events after repeated interruption:
+`stream_message` / `streamMessage` starts a new streamed turn. It reconnects with the most recent event ID and replays persisted events after repeated interruption:
 
 ```python
 from genie_api_sdk import AgentMessageEvent
@@ -152,6 +152,21 @@ for await (const event of client.streamMessage(handle, conversationId, "Show my 
 ```
 
 The SDK retries three interrupted streams by default, honoring the server's `retry_after_ms` delay. Set `max_reconnects` / `maxReconnects` on `stream_message` / `streamMessage` when your application needs a different limit. After that limit, it replays persisted events automatically. Workato retains events for 24 hours. TypeScript callers can pass an `AbortSignal` as the final `streamMessage` argument to cancel an active stream or recovery wait.
+
+### Resume a persisted stream
+
+Persist the conversation ID, Genie run ID, and most recent SSE event ID while a turn is in progress. If your application restarts or the browser reconnects, call `stream_run` / `streamRun` rather than posting the message again. The SDK sends `Last-Event-ID` when one is supplied, automatically reconnects further interruptions, and falls back to the persisted-events endpoint after its reconnect limit.
+
+```python
+for event in client.stream_run(handle, conversation_id, genie_run_id, last_event_id=last_event_id):
+    handle_event(event)
+```
+
+```ts
+for await (const event of client.streamRun(handle, conversationId, genieRunId, { lastEventId })) {
+  handleEvent(event);
+}
+```
 
 ## Paused turns
 
