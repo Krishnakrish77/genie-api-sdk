@@ -124,6 +124,25 @@ test("a non-JSON error body surfaces as a typed error instead of a body-already-
   );
 });
 
+test("tolerates empty success bodies (feedback returns 202 with no content)", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => new Response("", { status: 202 })
+  });
+  // Must resolve — a JSON.parse crash here masked the feedback call's success on the live API.
+  await client.submitFeedback("genie", "conversation", "run", "positive");
+});
+
+test("getConversation fills conversation_id from the request when the API omits it", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => Response.json({ result: { state: "idle" } })
+  });
+  const conversation = await client.getConversation("genie", "conversation-1");
+  assert.equal(conversation.conversation_id, "conversation-1");
+  assert.equal(conversation.state, "idle");
+});
+
 test("serializes file attachment through the options object", async () => {
   const bodies = [];
   const client = new GenieClient({

@@ -38,8 +38,11 @@ export class GenieClient {
     return this.json("POST", this.path(genieHandle, "/conversations"));
   }
 
-  getConversation(genieHandle: string, conversationId: string): Promise<Conversation> {
-    return this.json("GET", this.path(genieHandle, `/conversations/${this.id(conversationId)}`));
+  async getConversation(genieHandle: string, conversationId: string): Promise<Conversation> {
+    // The API doesn't echo the id in this response (it's already in the URL) — fill it in so
+    // the Conversation type actually holds at runtime.
+    const conversation = await this.json<Omit<Conversation, "conversation_id">>("GET", this.path(genieHandle, `/conversations/${this.id(conversationId)}`));
+    return { ...conversation, conversation_id: conversationId };
   }
 
   async listMessages(genieHandle: string, conversationId: string, options: { limit?: number; cursor?: string } = {}): Promise<Page<Message>> {
@@ -173,8 +176,11 @@ export class GenieClient {
 
   private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown, signal?: AbortSignal): Promise<T> {
     const response = await this.request(method, path, params, body, undefined, signal);
-    if (response.status === 204) return undefined as T;
-    return unwrapResult(await response.json() as Record<string, unknown>) as T;
+    // Success isn't always JSON: the feedback endpoint returns 202 with an empty body, so read
+    // the body as text and parse only when there is one (204 subsumed — its body is empty too).
+    const text = await response.text();
+    if (!text) return undefined as T;
+    return unwrapResult(JSON.parse(text) as Record<string, unknown>) as T;
   }
 
   private async request(method: string, path: string, params?: Record<string, unknown>, body?: unknown, extraHeaders?: HeadersInit, signal?: AbortSignal): Promise<Response> {

@@ -205,6 +205,13 @@ cd typescript && npm run check && npm test
 
 The test suite must not call the live Workato service. Use `httpx.MockTransport` in Python and injected `fetch` implementations in TypeScript.
 
+`cd typescript && npm run test:e2e` is the opt-in exception: a live end-to-end suite
+(`test/e2e.live.mjs`) that serves as the pre-release gate. It runs only when `GENIE_E2E=1` and
+`WORKATO_API_KEY`, `WORKATO_IDP_USER_ID`, and `WORKATO_GENIE_HANDLE` are set (plus
+`WORKATO_BASE_URL` for Preview/on-prem) — the same gating convention as the web-chat smoke test
+below. Each run spends two genie runs and leaves conversations behind; use a non-production
+workspace.
+
 ## Example application and real API smoke test
 
 The [web chat example](../examples/web-chat/README.md) is a responsive,

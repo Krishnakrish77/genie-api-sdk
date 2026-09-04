@@ -17,6 +17,7 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
+    "test:e2e": "npm run build && node --test test/e2e.live.mjs",
     "prepublishOnly": "npm run check && npm test"
   },
   "engines": { "node": ">=20.19" },
