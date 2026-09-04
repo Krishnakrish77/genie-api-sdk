@@ -197,7 +197,11 @@ export class GenieClient {
       if (refreshed) response = await sendWithAuth();
     }
     if (!response.ok) {
-      let errorBody: unknown; try { errorBody = await response.json(); } catch { errorBody = await response.text(); }
+      // Read the body exactly once: response.json() consumes the stream even when parsing fails,
+      // so a response.text() retry would throw "Body already used" and mask the real error.
+      const errorText = await response.text();
+      let errorBody: unknown;
+      try { errorBody = JSON.parse(errorText); } catch { errorBody = errorText; }
       const ErrorType = response.status === 400 ? BadRequestError
         : response.status === 401 ? AuthenticationError
         : response.status === 403 ? PermissionDeniedError

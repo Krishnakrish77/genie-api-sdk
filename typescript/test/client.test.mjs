@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AuthenticationError, GenieClient, OAuthAuth, OAuthPkce, RefreshableOAuthAuth } from "../dist/index.js";
+import { AuthenticationError, GenieClient, NotFoundError, OAuthAuth, OAuthPkce, RefreshableOAuthAuth } from "../dist/index.js";
 
 test("OAuth PKCE builds a public-client authorization request and exchanges rotating tokens", async () => {
   const requests = [];
@@ -94,6 +94,34 @@ test("parses CRLF SSE frames split at arbitrary chunk boundaries", async () => {
   assert.equal(events[0].type, "agent.message");
   assert.equal(events[0].data.message, "first");
   assert.equal(events[1].type, "processing.finished");
+});
+
+test("a non-JSON error body surfaces as a typed error instead of a body-already-used crash", async () => {
+  const textClient = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => new Response("Not found", { status: 404 })
+  });
+  await assert.rejects(
+    () => textClient.listConversations("genie"),
+    (error) => {
+      assert.ok(error instanceof NotFoundError);
+      assert.equal(error.body, "Not found");
+      return true;
+    }
+  );
+
+  const jsonClient = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => Response.json({ error: "missing" }, { status: 404 })
+  });
+  await assert.rejects(
+    () => jsonClient.listConversations("genie"),
+    (error) => {
+      assert.ok(error instanceof NotFoundError);
+      assert.deepEqual(error.body, { error: "missing" });
+      return true;
+    }
+  );
 });
 
 test("serializes file attachment through the options object", async () => {
