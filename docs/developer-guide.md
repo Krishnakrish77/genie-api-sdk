@@ -151,7 +151,7 @@ for await (const event of client.streamMessage(handle, conversationId, "Show my 
 }
 ```
 
-The SDK retries three interrupted streams by default, honoring the server's `retry_after_ms` delay. Set `max_reconnects` / `maxReconnects` on `stream_message` / `streamMessage` when your application needs a different limit. After that limit, it replays persisted events automatically. Workato retains events for 24 hours. TypeScript callers can pass an `AbortSignal` as the final `streamMessage` argument to cancel an active stream or recovery wait.
+The SDK retries three interrupted streams by default, honoring the server's `retry_after_ms` delay. Set `max_reconnects` / `maxReconnects` on `stream_message` / `streamMessage` when your application needs a different limit. After that limit, it replays persisted events automatically. Workato retains events for 24 hours. TypeScript callers can pass `signal: abortController.signal` in the `streamMessage` options object to cancel an active stream or recovery wait.
 
 ### Resume a persisted stream
 
@@ -189,7 +189,7 @@ The original SSE stream remains open and resumes after the resolution. Keep rend
 
 ## Files and history
 
-Upload a file first, then pass its returned `file_id` / `fileId` to `stream_message` / `streamMessage` or `send_message` / `sendMessage`. File size is limited by Workato (currently 20 MB).
+Upload a file first, then pass its returned `file_id` / `fileId` to `stream_message` / `streamMessage` or `send_message` / `sendMessage`. In TypeScript, pass it in the options object: `client.streamMessage(handle, conversationId, "Summarize this", { fileId })`. File size is limited by Workato (currently 20 MB).
 
 Use `list_conversations` / `listConversations`, `get_conversation` / `getConversation`, and `list_messages` / `listMessages` to build history views. List endpoints return a `cursor` when another page is available.
 

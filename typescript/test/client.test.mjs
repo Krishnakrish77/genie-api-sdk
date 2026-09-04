@@ -96,6 +96,25 @@ test("parses CRLF SSE frames split at arbitrary chunk boundaries", async () => {
   assert.equal(events[1].type, "processing.finished");
 });
 
+test("serializes file attachment through the options object", async () => {
+  const bodies = [];
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async (url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return Response.json({ conversation_id: "c", genie_run_id: "run" });
+    }
+  });
+
+  await client.sendMessage("genie", "c", "hello");
+  await client.sendMessage("genie", "c", "hello", { fileId: "file-1" });
+
+  assert.deepEqual(bodies, [
+    { message: "hello", stream: false },
+    { message: "hello", file_id: "file-1", stream: false }
+  ]);
+});
+
 test("refreshes and persists expired OAuth credentials once", async () => {
   let tokens = { accessToken: "expired", refreshToken: "refresh-1", expiresAt: new Date(0) };
   let refreshes = 0;
@@ -328,7 +347,7 @@ test("honors stream retry delay and supports aborting the wait", async () => {
     }
   });
   await assert.rejects(async () => {
-    for await (const event of client.streamMessage("genie", "conversation", "hello", undefined, 3, abort.signal)) {
+    for await (const event of client.streamMessage("genie", "conversation", "hello", { signal: abort.signal })) {
       if (event.type === "system.stream_interrupted") abort.abort(new Error("cancelled"));
     }
   }, /cancelled/);

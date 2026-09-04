@@ -47,18 +47,19 @@ export class GenieClient {
     return { items: data.messages, totalCount: data.total_count, cursor: data.cursor };
   }
 
-  sendMessage(genieHandle: string, conversationId: string, message: string, fileId?: string): Promise<Run> {
-    return this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), undefined, { message, file_id: fileId, stream: false });
+  sendMessage(genieHandle: string, conversationId: string, message: string, options: { fileId?: string } = {}): Promise<Run> {
+    return this.json("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), undefined, { message, file_id: options.fileId, stream: false });
   }
 
-  private streamMessageOnce(genieHandle: string, conversationId: string, message: string, fileId?: string, signal?: AbortSignal): AsyncIterable<Event> {
-    return this.stream("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), { message, file_id: fileId, stream: true }, undefined, signal);
+  private streamMessageOnce(genieHandle: string, conversationId: string, message: string, options: { fileId?: string; signal?: AbortSignal }): AsyncIterable<Event> {
+    return this.stream("POST", this.path(genieHandle, `/conversations/${this.id(conversationId)}/messages`), { message, file_id: options.fileId, stream: true }, undefined, options.signal);
   }
 
   /** Streams a message with automatic reconnection and persisted-event replay. */
-  async *streamMessage(genieHandle: string, conversationId: string, message: string, fileId?: string, maxReconnects = 3, signal?: AbortSignal): AsyncGenerator<Event> {
+  async *streamMessage(genieHandle: string, conversationId: string, message: string, options: { fileId?: string; maxReconnects?: number; signal?: AbortSignal } = {}): AsyncGenerator<Event> {
+    const { fileId, maxReconnects = 3, signal } = options;
     if (maxReconnects < 0) throw new Error("maxReconnects must be non-negative");
-    let stream = this.streamMessageOnce(genieHandle, conversationId, message, fileId, signal);
+    let stream = this.streamMessageOnce(genieHandle, conversationId, message, { fileId, signal });
     let runId: string | undefined;
     let lastEventId: string | undefined;
     let lastCreatedAt: string | undefined;
