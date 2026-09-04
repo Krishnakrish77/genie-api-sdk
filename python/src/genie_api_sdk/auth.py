@@ -91,7 +91,7 @@ class OAuthPkce:
             state=state,
             code_challenge=create_s256_code_challenge(code_verifier),
             code_challenge_method="S256",
-            scope="openid profile",
+            scope="openid profile email",
         )
         return OAuthAuthorizationRequest(authorization_url, state, code_verifier)
 

@@ -225,6 +225,9 @@ class GenieClient:
             headers = {**self._headers(), "Accept": "text/event-stream"}
             headers.update(kwargs.pop("headers", {}) or {})
             with self._client.stream(method, url, headers=headers, **kwargs) as response:
+                if not response.is_success:
+                    # Streaming responses stay unread; raise_for_status needs the body for typed errors.
+                    response.read()
                 raise_for_status(response)
                 event_type: Optional[str] = None
                 event_id: Optional[str] = None

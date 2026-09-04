@@ -109,6 +109,44 @@ def test_stream_run_reconnects_a_persisted_run_after_the_supplied_event_id():
     assert requests[0].headers["last-event-id"] == "previous/id"
 
 
+def test_stream_surfaces_typed_error_for_unread_error_bodies():
+    class UnreadStream(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b'{"error": "unauthorized"}'
+
+    def handler(request):
+        return httpx.Response(401, stream=UnreadStream())
+
+    client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    try:
+        list(client.stream_message("genie", "conversation", "hello"))
+    except AuthenticationError as error:
+        assert error.status_code == 401
+        assert error.body == {"error": "unauthorized"}
+    else:
+        raise AssertionError("expected AuthenticationError")
+
+
+def test_async_stream_surfaces_typed_error_for_unread_error_bodies():
+    class UnreadStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'{"error": "unauthorized"}'
+
+    async def run():
+        async def handler(request):
+            return httpx.Response(401, stream=UnreadStream())
+
+        client = AsyncGenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+        try:
+            [event async for event in client.stream_message("genie", "conversation", "hello")]
+        except AuthenticationError as error:
+            assert error.status_code == 401
+        else:
+            raise AssertionError("expected AuthenticationError")
+
+    asyncio.run(run())
+
+
 def test_async_client_streams_typed_events():
     async def run():
         async def handler(request):
@@ -166,7 +204,7 @@ def test_oauth_pkce_uses_s256_validates_state_and_never_sends_a_client_secret():
     authorization = httpx.URL(login.authorization_url)
     assert authorization.host == "identity.example"
     assert authorization.params["redirect_uri"] == "https://app.example/callback"
-    assert authorization.params["scope"] == "openid profile"
+    assert authorization.params["scope"] == "openid profile email"
     assert authorization.params["state"] == login.state
     assert authorization.params["code_challenge_method"] == "S256"
     try:

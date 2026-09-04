@@ -104,7 +104,7 @@ export class OAuthPkce {
     const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
     const authorizationUrl = buildAuthorizationUrl(configuration, {
       redirect_uri: this.redirectUri,
-      scope: "openid profile",
+      scope: "openid profile email",
       state,
       code_challenge: codeChallenge,
       code_challenge_method: "S256",

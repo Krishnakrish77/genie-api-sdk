@@ -29,7 +29,7 @@ test("OAuth PKCE builds a public-client authorization request and exchanges rota
   const authorization = new URL(login.authorizationUrl);
   assert.equal(authorization.origin, "https://identity.example");
   assert.equal(authorization.searchParams.get("redirect_uri"), "https://app.example/callback");
-  assert.equal(authorization.searchParams.get("scope"), "openid profile");
+  assert.equal(authorization.searchParams.get("scope"), "openid profile email");
   assert.equal(authorization.searchParams.get("state"), login.state);
   assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
   await assert.rejects(() => oauth.exchangeCallback("https://app.example/callback?code=code&state=wrong", login), /state/);
