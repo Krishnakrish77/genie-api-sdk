@@ -23,6 +23,6 @@
   "engines": { "node": ">=20.19" },
   "packageManager": "npm@10.9.2",
   "publishConfig": { "access": "public", "provenance": true },
-  "dependencies": { "openid-client": "^6.8.7" },
+  "dependencies": { "openid-client": "^6.8.8" },
   "devDependencies": { "typescript": "^7.0.2" }
 }
