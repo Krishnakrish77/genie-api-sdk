@@ -29,3 +29,5 @@ const client = new GenieClient({ auth: oauth.refreshableAuth(() => loadTokens(),
 For rotating OAuth credentials, use `RefreshableOAuthAuth`. Its `refreshAndPersist` callback must atomically refresh and persist the winning token set (for example, with a database transaction or distributed lock).
 
 `streamMessage()` reconnects interrupted streams automatically; use its options object (`{ maxReconnects, signal, fileId }`) to tune recovery, cancellation, and attachments. To resume a persisted run after an application restart, call `streamRun(handle, conversationId, genieRunId, { lastEventId })`. Type guards such as `isAgentMessageEvent()` narrow common event payloads safely.
+
+For system-to-system work (scheduled or batch runs), use `sendTask("my-genie", "task text", { contextId, callbackUrl })`. It requires API-key authentication — OAuth is not supported on the task endpoint.

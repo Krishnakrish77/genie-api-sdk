@@ -1,4 +1,4 @@
-import type { ClientOptions, Conversation, Event, EventData, FeedbackReaction, Message, Page, Run, RuntimeConnectionLink, SkillResolution } from "./types.js";
+import type { ClientOptions, Conversation, Event, EventData, FeedbackReaction, GenieTask, Message, Page, Run, RuntimeConnectionLink, SkillResolution } from "./types.js";
 import type { Auth } from "./auth.js";
 
 const DEFAULT_BASE_URL = "https://genie-api.workato.com";
@@ -171,11 +171,24 @@ export class GenieClient {
     return unwrapResult(await response.json() as Record<string, unknown>).file_id as string;
   }
 
+  /**
+   * Submit a system-to-system task. API-key clients only: the task endpoint
+   * rejects OAuth tokens and the `X-IDP-User-Id` header, so only the bearer
+   * key is sent regardless of the client's normal authentication strategy.
+   */
+  async sendTask(genieHandle: string, requestText: string, options: { contextId?: string; callbackUrl?: string } = {}): Promise<GenieTask> {
+    const taskHeaders = this.auth.taskHeaders?.();
+    if (!taskHeaders) throw new Error("sendTask requires ApiKeyAuth; the task endpoint does not support OAuth");
+    return this.json("POST", `/api/v1/genies/${this.id(genieHandle)}/task`, undefined,
+      { request_text: requestText, context_id: options.contextId, callback_url: options.callbackUrl }, undefined,
+      { overrideHeaders: taskHeaders });
+  }
+
   private id(value: string): string { return encodeURIComponent(value); }
   private path(genieHandle: string, suffix: string): string { return `/api/v1/genies/${this.id(genieHandle)}/chat${suffix}`; }
 
-  private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown, signal?: AbortSignal): Promise<T> {
-    const response = await this.request(method, path, params, body, undefined, signal);
+  private async json<T>(method: string, path: string, params?: Record<string, unknown>, body?: unknown, signal?: AbortSignal, auth?: { overrideHeaders: Record<string, string> }): Promise<T> {
+    const response = await this.request(method, path, params, body, undefined, signal, auth);
     // Success isn't always JSON: the feedback endpoint returns 202 with an empty body, so read
     // the body as text and parse only when there is one (204 subsumed — its body is empty too).
     const text = await response.text();
@@ -183,16 +196,16 @@ export class GenieClient {
     return unwrapResult(JSON.parse(text) as Record<string, unknown>) as T;
   }
 
-  private async request(method: string, path: string, params?: Record<string, unknown>, body?: unknown, extraHeaders?: HeadersInit, signal?: AbortSignal): Promise<Response> {
+  private async request(method: string, path: string, params?: Record<string, unknown>, body?: unknown, extraHeaders?: HeadersInit, signal?: AbortSignal, auth?: { overrideHeaders: Record<string, string> }): Promise<Response> {
     const url = new URL(path, this.baseUrl);
     for (const [key, value] of Object.entries(params ?? {})) if (value !== undefined) url.searchParams.set(key, String(value));
     const isForm = body instanceof FormData;
     const sendWithAuth = async () => {
-      const headers = { Accept: "application/json", ...(await this.auth.headers()), ...(isForm ? {} : body === undefined ? {} : { "Content-Type": "application/json" }), ...extraHeaders };
+      const headers = { Accept: "application/json", ...(auth ? auth.overrideHeaders : await this.auth.headers()), ...(isForm ? {} : body === undefined ? {} : { "Content-Type": "application/json" }), ...extraHeaders };
       return this.fetchImpl(url, { method, headers, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body), signal });
     };
     let response = await sendWithAuth();
-    if (response.status === 401 && method === "GET" && this.auth.forceRefresh) {
+    if (response.status === 401 && method === "GET" && !auth && this.auth.forceRefresh) {
       let refreshed = false;
       try {
         await this.auth.forceRefresh();

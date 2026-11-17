@@ -19,6 +19,8 @@ export const DEFAULT_IDENTITY_BASE_URL = "https://id.workato.com";
 export interface Auth {
   headers(): MaybePromise<Record<string, string>>;
   forceRefresh?(): MaybePromise<void>;
+  /** Headers for the task endpoint (API-key only). Present on ApiKeyAuth; the task endpoint rejects OAuth. */
+  taskHeaders?(): Record<string, string>;
 }
 
 export class ApiKeyAuth implements Auth {
@@ -27,6 +29,11 @@ export class ApiKeyAuth implements Auth {
   async headers(): Promise<Record<string, string>> {
     const userId = typeof this.idpUserId === "function" ? await this.idpUserId() : this.idpUserId;
     return { Authorization: `Bearer ${this.apiKey}`, "X-IDP-User-Id": userId };
+  }
+
+  /** Headers for the task endpoint, which accepts only the bearer key and rejects `X-IDP-User-Id`. */
+  taskHeaders(): Record<string, string> {
+    return { Authorization: `Bearer ${this.apiKey}` };
   }
 }
 

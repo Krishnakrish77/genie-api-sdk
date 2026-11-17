@@ -3,14 +3,14 @@
 import asyncio
 import inspect
 import json
-from typing import AsyncIterator, BinaryIO, Mapping, Optional, Set, Tuple, Union
+from typing import AsyncIterator, BinaryIO, Mapping, Optional, Set, Tuple, Union, cast
 from urllib.parse import quote
 
 import httpx
 
 from .auth import Auth
 from .errors import raise_for_status
-from .models import Conversation, Event, Message, Page, Run
+from .models import Conversation, Event, GenieTask, Message, Page, Run
 
 DEFAULT_BASE_URL = "https://genie-api.workato.com"
 
@@ -122,6 +122,19 @@ class AsyncGenieClient:
     async def upload_file(self, genie_handle: str, conversation_id: str, file: Union[BinaryIO, Tuple[str, BinaryIO, str]]) -> str:
         response = await self._client.post(self._path(genie_handle, f"/conversations/{self._id(conversation_id)}/upload"), files={"file": file}, headers=await self._headers())
         return self._data(raise_for_status(response))["file_id"]  # type: ignore[return-value]
+
+    async def send_task(self, genie_handle: str, request_text: str, *, context_id: Optional[str] = None, callback_url: Optional[str] = None) -> GenieTask:
+        """Submit a system-to-system task. API-key clients only; OAuth is not supported."""
+        api_key = getattr(self._auth, "api_key", None)
+        if not isinstance(api_key, str):
+            raise ValueError("send_task requires ApiKeyAuth; the task endpoint does not support OAuth")
+        data = self._data(raise_for_status(await self._client.post(
+            f"/api/v1/genies/{quote(genie_handle, safe='')}/task",
+            json=self._json(request_text=request_text, context_id=context_id, callback_url=callback_url),
+            headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+        )))
+        return GenieTask(task_id=cast(str, data["task_id"]), conversation_id=cast(str, data["conversation_id"]),
+                         response_url=cast(str, data["response_url"]), status=cast(str, data["status"]))
 
     async def stream_message(self, genie_handle: str, conversation_id: str, message: str, *, file_id: Optional[str] = None, max_reconnects: int = 3) -> AsyncIterator[Event]:
         if max_reconnects < 0:

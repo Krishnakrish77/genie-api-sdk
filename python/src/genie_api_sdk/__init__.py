@@ -9,13 +9,13 @@ from .errors import (ApiStatusError, AuthenticationError, BadRequestError,
                      ConflictError, GenieError, InternalServerError,
                      NotFoundError, PermissionDeniedError, RateLimitError,
                      UnprocessableEntityError)
-from .models import (AgentMessageEvent, Conversation, Event, Message, Page,
+from .models import (AgentMessageEvent, Conversation, Event, GenieTask, Message, Page,
                      Run, RuntimeConnectionAuthRequiredEvent,
                      SkillConfirmationRequiredEvent, StreamInterruptedEvent)
 
 __all__ = [
     "AgentMessageEvent", "ApiKeyAuth", "AsyncAuth", "AsyncGenieClient", "AsyncOAuthAuth", "AsyncRefreshableOAuthAuth", "Auth", "Conversation", "Event",
-    "GenieClient", "Message", "Page", "Run", "RuntimeConnectionAuthRequiredEvent",
+    "GenieClient", "GenieTask", "Message", "Page", "Run", "RuntimeConnectionAuthRequiredEvent",
     "DEFAULT_IDENTITY_BASE_URL", "OAuthAuth", "OAuthAuthorizationRequest", "OAuthPkce", "OAuthTokens", "RefreshableOAuthAuth", "SkillConfirmationRequiredEvent", "StreamInterruptedEvent",
     "ApiStatusError", "AuthenticationError", "BadRequestError", "ConflictError", "GenieError",
     "InternalServerError", "NotFoundError", "PermissionDeniedError", "RateLimitError", "UnprocessableEntityError",
