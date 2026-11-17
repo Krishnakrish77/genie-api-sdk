@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AuthenticationError, GenieClient, NotFoundError, OAuthAuth, OAuthPkce, RefreshableOAuthAuth } from "../dist/index.js";
+import { ApiKeyAuth, AuthenticationError, GenieClient, NotFoundError, OAuthAuth, OAuthPkce, RefreshableOAuthAuth } from "../dist/index.js";
 
 test("OAuth PKCE builds a public-client authorization request and exchanges rotating tokens", async () => {
   const requests = [];
@@ -340,7 +340,7 @@ test("streamRun surfaces an API failure without retrying or replaying", async ()
 test("covers conversation, event, approval, runtime connection, and upload operations", async () => {
   const requests = [];
   const client = new GenieClient({
-    auth: new OAuthAuth(() => "token"),
+    auth: new ApiKeyAuth("api-key", "user-123"),
     fetch: async (url, init) => {
       const requestUrl = new URL(String(url));
       requests.push({ path: requestUrl.pathname, query: requestUrl.searchParams, init });
@@ -349,6 +349,11 @@ test("covers conversation, event, approval, runtime connection, and upload opera
       if (requestUrl.pathname.endsWith("/messages") && init.method === "GET") return Response.json({ messages: [{ message_id: "m", source: "user", content: "hi" }], total_count: 1 });
       if (requestUrl.pathname.endsWith("/events")) return Response.json({ events: [{ type: "agent.message", event_id: "e", message: "hi" }], next_since_created_at: "next-event" });
       if (requestUrl.pathname.endsWith("/link")) return Response.json({ status: "authorized" });
+      if (requestUrl.pathname.endsWith("/task")) {
+        assert.equal(init.headers.Authorization, "Bearer api-key");
+        assert.ok(!("X-IDP-User-Id" in init.headers));
+        return Response.json({ task_id: "t", conversation_id: "c", response_url: "https://example.test/r", status: "accepted" });
+      }
       if (/\/(skill_approval|business_approval)\/|\/feedback$|\/reject$/.test(requestUrl.pathname)) return new Response(null, { status: 204 });
       if (requestUrl.pathname.endsWith("/upload")) { assert.ok(init.body instanceof FormData); return Response.json({ file_id: "f" }); }
       if (requestUrl.pathname.endsWith("/c")) return Response.json({ conversation_id: "c", state: "idle" });
@@ -367,6 +372,9 @@ test("covers conversation, event, approval, runtime connection, and upload opera
   assert.equal((await client.getRuntimeConnectionLink("genie", "attempt")).status, "authorized");
   await client.rejectRuntimeConnection("genie", "attempt", "no");
   assert.equal(await client.uploadFile("genie", "c", new Blob(["hello"])), "f");
+  const task = await client.sendTask("genie", "Run the nightly reconciliation", { contextId: "ctx", callbackUrl: "https://example.test/callback" });
+  assert.equal(task.task_id, "t");
+  assert.equal(task.status, "accepted");
 
   const approval = requests.find((request) => request.path.includes("/skill_approval/"));
   assert.deepEqual(JSON.parse(approval.init.body), { resolution: "rejected", rejection_reason: "no" });
@@ -377,6 +385,18 @@ test("covers conversation, event, approval, runtime connection, and upload opera
   const events = requests.find((request) => request.path.endsWith("/events"));
   assert.equal(events.query.get("conversation_id"), "c");
   assert.equal(events.query.get("since_created_at"), "start");
+  const taskRequest = requests.find((request) => request.path.endsWith("/task"));
+  assert.deepEqual(JSON.parse(taskRequest.init.body), { request_text: "Run the nightly reconciliation", context_id: "ctx", callback_url: "https://example.test/callback" });
+  assert.equal(taskRequest.path, "/api/v1/genies/genie/task");
+});
+
+test("sendTask rejects OAuth auth without contacting the service", async () => {
+  const client = new GenieClient({
+    auth: new OAuthAuth(() => "token"),
+    fetch: async () => { throw new Error("sendTask must not issue a request with OAuth credentials"); }
+  });
+
+  await assert.rejects(() => client.sendTask("genie", "Run it"), /ApiKeyAuth/);
 });
 
 test("honors stream retry delay and supports aborting the wait", async () => {

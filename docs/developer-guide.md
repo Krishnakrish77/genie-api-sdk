@@ -193,6 +193,22 @@ Upload a file first, then pass its returned `file_id` / `fileId` to `stream_mess
 
 Use `list_conversations` / `listConversations`, `get_conversation` / `getConversation`, and `list_messages` / `listMessages` to build history views. List endpoints return a `cursor` when another page is available.
 
+## System-to-system tasks
+
+For programmatic, backend-to-genie work — scheduled runs, batch jobs, triggering a genie from another service — use `send_task` / `sendTask` instead of the conversation flow. The task endpoint supports API-key authentication only and rejects the `X-IDP-User-Id` header, so the SDK sends only the bearer key; it raises an error when the client was built with an OAuth strategy.
+
+```python
+task = client.send_task("my-genie", "Reconcile yesterday's invoices")
+print(task.task_id, task.status, task.response_url)
+```
+
+```ts
+const task = await client.sendTask("my-genie", "Reconcile yesterday's invoices");
+console.log(task.task_id, task.status, task.response_url);
+```
+
+Pass `context_id` / `contextId` to link related tasks, and `callback_url` / `callbackUrl` to receive a completion notification. `status` is `accepted` or `rejected`.
+
 ## Local development
 
 Run checks from the repository root:
