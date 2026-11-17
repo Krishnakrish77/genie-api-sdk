@@ -41,6 +41,15 @@ class Run:
 
 
 @dataclass(frozen=True)
+class GenieTask:
+    """Response of a submitted system-to-system genie task."""
+    task_id: str
+    conversation_id: str
+    response_url: str
+    status: str
+
+
+@dataclass(frozen=True)
 class Event:
     """A Headless API SSE event. Event-specific fields are held in ``data``."""
 

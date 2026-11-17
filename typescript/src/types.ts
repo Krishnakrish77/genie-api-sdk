@@ -27,6 +27,14 @@ export interface Message {
 
 export interface Run { conversation_id: string; genie_run_id: string; }
 
+/** Response of a submitted system-to-system genie task. */
+export interface GenieTask {
+  task_id: string;
+  conversation_id: string;
+  response_url: string;
+  status: "accepted" | "rejected" | string;
+}
+
 export interface Page<T> {
   items: T[];
   totalCount: number;

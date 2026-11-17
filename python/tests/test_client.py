@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import httpx
+import pytest
 
 from genie_api_sdk import (AgentMessageEvent, ApiKeyAuth, AsyncGenieClient,
                            AsyncOAuthAuth, AsyncRefreshableOAuthAuth, GenieClient, OAuthAuth, OAuthPkce,
@@ -394,6 +395,10 @@ def test_all_rest_operations_serialize_the_documented_paths_and_payloads():
             return httpx.Response(200, json={"events": [{"type": "agent.message", "event_id": "e", "message": "hello"}], "next_since_created_at": "cursor"})
         if path.endswith("/link"):
             return httpx.Response(200, json={"status": "auth_required", "auth_link": {"url": "https://example.test", "expires_at": "now", "connector_name": "Demo"}})
+        if path.endswith("/task"):
+            assert request.headers["authorization"] == "Bearer key"
+            assert "x-idp-user-id" not in {key.lower() for key in request.headers}
+            return httpx.Response(200, json={"task_id": "t", "conversation_id": "c", "response_url": "https://example.test/r", "status": "accepted"})
         if path.endswith("/upload"):
             assert request.headers["content-type"].startswith("multipart/form-data")
             return httpx.Response(200, json={"file_id": "f"})
@@ -413,8 +418,11 @@ def test_all_rest_operations_serialize_the_documented_paths_and_payloads():
     assert client.get_runtime_connection_link("genie", "attempt")["status"] == "auth_required"
     client.reject_runtime_connection("genie", "attempt", reason="no")
     assert client.upload_file("genie", "c", ("note.txt", io.BytesIO(b"hello"), "text/plain")) == "f"
+    task = client.send_task("genie", "Run the nightly reconciliation", context_id="ctx", callback_url="https://example.test/callback")
+    assert (task.task_id, task.conversation_id, task.status) == ("t", "c", "accepted")
 
     payloads = {request.url.path: json.loads(request.content) for request in requests if request.headers.get("content-type") == "application/json"}
+    assert payloads[next(path for path in payloads if path.endswith("/task"))] == {"request_text": "Run the nightly reconciliation", "context_id": "ctx", "callback_url": "https://example.test/callback"}
     assert payloads[next(path for path in payloads if "/skill_approval/" in path)] == {"resolution": "rejected", "rejection_reason": "no"}
     assert payloads[next(path for path in payloads if "/business_approval/" in path)] == {"resolution": "approved"}
     assert payloads[next(path for path in payloads if path.endswith("/feedback"))] == {"reaction": "positive", "comment": "Useful"}
@@ -457,6 +465,8 @@ def test_async_client_covers_all_rest_operations():
                 return httpx.Response(200, json={"events": []})
             if path.endswith("/link"):
                 return httpx.Response(200, json={"status": "authorized"})
+            if path.endswith("/task"):
+                return httpx.Response(200, json={"task_id": "t", "conversation_id": "c", "response_url": "https://example.test/r", "status": "accepted"})
             if path.endswith("/upload"):
                 return httpx.Response(200, json={"file_id": "f"})
             if path.endswith("/c"):
@@ -476,10 +486,16 @@ def test_async_client_covers_all_rest_operations():
         await client.get_runtime_connection_link("genie", "attempt")
         await client.reject_runtime_connection("genie", "attempt")
         assert await client.upload_file("genie", "c", ("note.txt", io.BytesIO(b"hello"), "text/plain")) == "f"
+        task = await client.send_task("genie", "Run the nightly reconciliation", context_id="ctx")
+        assert (task.task_id, task.status) == ("t", "accepted")
         paths = {request.url.path for request in requests}
-        assert paths >= {"/api/v1/genies/genie/chat/conversations", "/api/v1/genies/genie/chat/conversations/c", "/api/v1/genies/genie/chat/conversations/c/messages", "/api/v1/genies/genie/chat/conversations/events", "/api/v1/genies/genie/chat/conversations/c/skill_approval/call", "/api/v1/genies/genie/chat/conversations/c/business_approval/business-call", "/api/v1/genies/genie/chat/conversations/c/genie-runs/run/feedback", "/api/v1/genies/genie/chat/runtime_connection/attempt/link", "/api/v1/genies/genie/chat/runtime_connection/attempt/reject", "/api/v1/genies/genie/chat/conversations/c/upload"}
+        assert paths >= {"/api/v1/genies/genie/chat/conversations", "/api/v1/genies/genie/chat/conversations/c", "/api/v1/genies/genie/chat/conversations/c/messages", "/api/v1/genies/genie/chat/conversations/events", "/api/v1/genies/genie/chat/conversations/c/skill_approval/call", "/api/v1/genies/genie/chat/conversations/c/business_approval/business-call", "/api/v1/genies/genie/chat/conversations/c/genie-runs/run/feedback", "/api/v1/genies/genie/chat/runtime_connection/attempt/link", "/api/v1/genies/genie/chat/runtime_connection/attempt/reject", "/api/v1/genies/genie/chat/conversations/c/upload", "/api/v1/genies/genie/task"}
         message_request = next(request for request in requests if request.method == "POST" and request.url.path.endswith("/messages"))
         assert json.loads(message_request.content) == {"message": "hello", "file_id": "f", "stream": False}
+        task_request = next(request for request in requests if request.url.path.endswith("/task"))
+        assert json.loads(task_request.content) == {"request_text": "Run the nightly reconciliation", "context_id": "ctx"}
+        assert task_request.headers["authorization"] == "Bearer key"
+        assert "x-idp-user-id" not in {key.lower() for key in task_request.headers}
         approval_request = next(request for request in requests if "/skill_approval/" in request.url.path)
         assert json.loads(approval_request.content) == {"resolution": "approved"}
         business_approval_request = next(request for request in requests if "/business_approval/" in request.url.path)
@@ -496,3 +512,39 @@ def test_async_client_covers_all_rest_operations():
         assert dict(events_list.url.params) == {"since_created_at": "start", "conversation_id": "c", "limit": "1"}
 
     asyncio.run(run())
+
+
+def test_send_task_rejects_oauth_auth_without_contacting_the_service():
+    def handler(request):  # pragma: no cover - must never be reached
+        raise AssertionError("send_task must not issue a request with OAuth credentials")
+
+    client = GenieClient(auth=OAuthAuth(lambda: "access-token"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
+    with pytest.raises(ValueError, match="ApiKeyAuth"):
+        client.send_task("genie", "Run it")
+
+
+@pytest.mark.parametrize("async_client", [False, True])
+def test_send_task_strips_inherited_default_headers_from_caller_configured_clients(async_client):
+    """A caller's httpx client with default auth headers must not leak them onto /task."""
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"task_id": "t", "conversation_id": "c", "response_url": "https://example.test/r", "status": "accepted"})
+
+    default_headers = {"X-IDP-User-Id": "leaked", "Authorization": "Bearer stale", "X-Custom": "keep-me"}
+    if async_client:
+        client = AsyncGenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test", headers=default_headers, auth=("client", "flow")))
+        task = asyncio.run(client.send_task("genie", "Run it"))
+    else:
+        client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test", headers=default_headers, auth=("client", "flow")))
+        task = client.send_task("genie", "Run it")
+
+    request = requests[0]
+    assert request.headers["authorization"] == "Bearer key"  # client-level auth flow must not replace the key
+    assert "x-idp-user-id" not in {key.lower() for key in request.headers}
+    assert request.headers["x-custom"] == "keep-me"  # unrelated caller defaults still apply
+    assert task.task_id == "t"
+    # The caller's client configuration is untouched.
+    assert client._client.headers["x-idp-user-id"] == "leaked"
+    assert client._client.auth is not None

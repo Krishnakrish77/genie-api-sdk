@@ -6,6 +6,7 @@ All notable changes are documented in this file. This project follows [Semantic 
 
 ### Added
 
+- `send_task` / `sendTask`: the Headless API `POST /api/v1/genies/:genie_handle/task` endpoint for system-to-system runs, with optional `context_id` / `callback_url`. API-key authentication only: the SDK sends only the bearer key (never `X-IDP-User-Id`) and rejects OAuth clients. Returns a `GenieTask` (`task_id`, `conversation_id`, `response_url`, `status`).
 - `npm run test:e2e` (TypeScript): opt-in live end-to-end suite (`test/e2e.live.mjs`) covering conversation creation, streaming, history reads, file upload + attachment, feedback, and event listing against a real workspace. Gated on `GENIE_E2E=1` plus the usual `WORKATO_*` credentials (same convention as the web-chat e2e smoke); skips cleanly without them. Use a non-production workspace.
 
 ### Fixed
