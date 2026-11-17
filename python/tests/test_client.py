@@ -521,3 +521,30 @@ def test_send_task_rejects_oauth_auth_without_contacting_the_service():
     client = GenieClient(auth=OAuthAuth(lambda: "access-token"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test"))
     with pytest.raises(ValueError, match="ApiKeyAuth"):
         client.send_task("genie", "Run it")
+
+
+@pytest.mark.parametrize("async_client", [False, True])
+def test_send_task_strips_inherited_default_headers_from_caller_configured_clients(async_client):
+    """A caller's httpx client with default auth headers must not leak them onto /task."""
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"task_id": "t", "conversation_id": "c", "response_url": "https://example.test/r", "status": "accepted"})
+
+    default_headers = {"X-IDP-User-Id": "leaked", "Authorization": "Bearer stale", "X-Custom": "keep-me"}
+    if async_client:
+        client = AsyncGenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test", headers=default_headers, auth=("client", "flow")))
+        task = asyncio.run(client.send_task("genie", "Run it"))
+    else:
+        client = GenieClient(auth=ApiKeyAuth("key", "user"), http_client=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test", headers=default_headers, auth=("client", "flow")))
+        task = client.send_task("genie", "Run it")
+
+    request = requests[0]
+    assert request.headers["authorization"] == "Bearer key"  # client-level auth flow must not replace the key
+    assert "x-idp-user-id" not in {key.lower() for key in request.headers}
+    assert request.headers["x-custom"] == "keep-me"  # unrelated caller defaults still apply
+    assert task.task_id == "t"
+    # The caller's client configuration is untouched.
+    assert client._client.headers["x-idp-user-id"] == "leaked"
+    assert client._client.auth is not None

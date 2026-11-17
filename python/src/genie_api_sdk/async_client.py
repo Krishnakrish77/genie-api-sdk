@@ -128,11 +128,16 @@ class AsyncGenieClient:
         api_key = getattr(self._auth, "api_key", None)
         if not isinstance(api_key, str):
             raise ValueError("send_task requires ApiKeyAuth; the task endpoint does not support OAuth")
-        data = self._data(raise_for_status(await self._client.post(
+        request = self._client.build_request(
+            "POST",
             f"/api/v1/genies/{quote(genie_handle, safe='')}/task",
             json=self._json(request_text=request_text, context_id=context_id, callback_url=callback_url),
             headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
-        )))
+        )
+        # A caller-configured httpx client may carry default auth headers or an auth flow;
+        # /task rejects X-IDP-User-Id, and a client-level auth flow must not replace the key.
+        request.headers.pop("X-IDP-User-Id", None)
+        data = self._data(raise_for_status(await self._client.send(request, auth=None)))
         return GenieTask(task_id=cast(str, data["task_id"]), conversation_id=cast(str, data["conversation_id"]),
                          response_url=cast(str, data["response_url"]), status=cast(str, data["status"]))
 
